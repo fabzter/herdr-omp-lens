@@ -161,16 +161,19 @@ herdr-omp-lens/
 4. **All specs settled** → subplans written (writing-plans format).
 5. **DoD-v1** → owner sign-off before any v2 work.
 
-## 10. Open questions (settle one at a time)
+## 10. Decisions (recorded 2026-11-20)
 
-- **Q-01** Repo name: keep `herdr-omp-lens` or rename? (Recommendation: keep.)
-- **Q-02** License: MIT? (Recommendation: MIT for a reusable personal repo.)
-- **Q-03** v2 scope: confirm interactive control as the v2 headline; nested tree / restart restore /
-  workspace board as optional follow-ups? (Recommendation: yes, control first.)
-- **Q-04** Add a Terra/Luna chat-role mapping to operator config for per-call delegation, or keep the
-  configured lighter scout routing? (Recommendation: keep current routing unless you want Terra/Luna.)
-- **Q-05** Phase 0 may run one cheap real task call to dump bus frames — acceptable? (Already approved
-  in principle; confirming the empirical method.)
+| ID | Question | Disposition | Provenance |
+|----|----------|-------------|------------|
+| Q-01 | Repo/package name | **Keep `herdr-omp-lens`** — working name, reversible; owner may rename | Coordinator default; fits owner's "humane repo" ask |
+| Q-02 | License | **MIT recommended; LICENSE file deferred to owner** — nothing published, not committed unilaterally | **Owner decision pending** (legal/policy) |
+| Q-03 | v2 headline | **Interactive control** (steer/follow-up/revive/cancel); nested tree, restart-restore, workspace board are optional horizon candidates | Ratified by owner decision #1 ("extensibility for C"), 2026-11-19 |
+| Q-04 | Delegation routing | **Keep configured lighter scout routing** (honors "smaller model" preference); Terra/Luna per-call role mapping offered, not applied (global config change needs explicit ask) | Owner preference 2026-11-19; coordinator ops decision |
+| Q-05 | Phase 0 probe method | **Done** — isolated print-mode probe passed; R-01 resolved | Owner approved Phase 0; executed 2026-11-20 |
+
+Phase-local technical questions (Q-P3-1 render strategy, Q-P5-1 history scope, Q-P4-1..3 stop/crash/split
+policy) carry recommendations in their specs and are ratified during owner spec review before subplans.
+Q-P5-2 history transport is already ratified as RC-3 in `specs/00-reconciliation.md`.
 
 ---
 
