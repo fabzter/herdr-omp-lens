@@ -51,3 +51,11 @@ namespace for v2), Herdr adapter, docs/tests.
 If upstream ships `omp attach` (issue #8404) or the ACP `_omp/agents/*` surface (PR #9878) releases,
 re-evaluate whether the bridge can be replaced by a first-party observation endpoint. Until then,
 option 4 is the only local-only seam that preserves ownership.
+
+---
+
+## Empirical confirmation (2026-11-20)
+
+Phase 0 (`../analysis/phase-0-probe-report.md`) confirmed the chosen seam's load-bearing assumption on
+OMP 19.0.1: `pi.events.on` receives `task:subagent:*` with full roster + transcript payloads. Decision
+stands; R-01 cleared (print-mode observed; TUI confirmation tracked in P2).

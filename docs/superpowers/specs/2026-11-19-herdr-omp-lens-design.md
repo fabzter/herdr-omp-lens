@@ -220,3 +220,13 @@ ignores/rejects them (FR-11).
 
 See `../../analysis/research-seams.md` for the full cited evidence (V-OMP-*, V-HDR-*, U-*, R-01) and
 `../../adr/0001-observation-seam.md` for the seam decision and rejected alternatives.
+
+---
+
+## 14. Phase 0 outcome (2026-11-20)
+
+R-01 is **resolved positively** (`../../analysis/phase-0-probe-report.md`): `pi.events.on` on the three
+`task:subagent:*` channels delivers full roster counters + streaming transcript + `sessionFile`. The
+bridge protocol field names in §7 can be finalized against the observed payloads. The artifact-polling
+fallback is retained only as fail-soft degradation, not the primary path. Remaining confirmations move
+into P2 acceptance: interactive-TUI mode, and idle/parked/aborted transitions.

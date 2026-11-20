@@ -171,3 +171,13 @@ herdr-omp-lens/
   configured lighter scout routing? (Recommendation: keep current routing unless you want Terra/Luna.)
 - **Q-05** Phase 0 may run one cheap real task call to dump bus frames — acceptable? (Already approved
   in principle; confirming the empirical method.)
+
+---
+
+## 11. Phase 0 outcome (2026-11-20)
+
+**P0 complete — R-01 resolved positively** (`../analysis/phase-0-probe-report.md`). `pi.events` carries
+`task:subagent:*` with full fidelity on OMP 19.0.1. The bus is the primary observation source; fallback
+is fail-soft only. P2 acceptance now includes: confirm in interactive TUI mode; exercise
+idle/parked/aborted transitions. Risk R-01 downgraded to verified-with-caveat. Next: owner review of
+this plan + SDD, then P1 foundation spec.

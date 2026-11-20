@@ -160,3 +160,19 @@ with usable payloads (U-OMP-1..4). Documented channel names + strong inference, 
 subscribe contract or payload schema. **Phase 0** is a bounded empirical probe on installed 19.0.1
 (one cheap task call, dump frames). If insufficient, fall back to artifact-tree JSONL polling +
 `omp render` (fully documented, less live). We do **not** read OMP implementation source to fill the gap.
+
+---
+
+## 4. Phase 0 outcome (2026-11-20) — R-01 resolved
+
+The bounded probe (`phase-0-probe-report.md`) confirmed on installed OMP 19.0.1 that `pi.events` is an
+EventEmitter-like bus (`on`/`emit`/`hasListeners`/`watchListeners`) and that `.on` subscriptions to all
+three `task:subagent:*` channels receive full-fidelity frames during a real task spawn:
+
+- **U-OMP-1 resolved:** `pi.events` carries the frames (observed in print mode; TUI confirmation = P2).
+- **U-OMP-2 resolved:** payload shapes observed (report §"Observed payload shapes").
+- **U-OMP-3 resolved:** progress carries status + tokens/cost/requests/toolCount/durationMs/model/contextWindow.
+- **U-OMP-4 resolved:** `task:subagent:event` streams the full session-event union incl. tool calls/results.
+- **U-OMP-6 resolved:** `lifecycle.sessionFile` gives the exact child JSONL path.
+- **Still open:** idle/parked/aborted transitions (P2); TUI-mode confirmation (P2); thinking-visibility
+  mirroring (P3). R-01 downgraded from critical-unknown to verified-with-caveat.
