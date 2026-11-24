@@ -20,6 +20,7 @@ const groups = [
   { name: "Long-horizon plan", docs: [
     { src: "docs/plans/00-master-plan.md", out: "master-plan.html", title: "Master plan — v1/v2 + DoD" },
     { src: "docs/plans/specs/00-reconciliation.md", out: "reconciliation.html", title: "Cross-spec reconciliation" },
+    { src: "docs/superpowers/plans/2026-11-24-v1-foundation.md", out: "p1-plan.html", title: "P1 implementation plan" },
   ]},
   { name: "v1 phase specs", docs: [
     { src: "docs/plans/specs/phase-01-foundation-spec.md", out: "phase-01.html", title: "P1 — Foundation" },
