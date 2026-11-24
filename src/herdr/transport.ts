@@ -184,3 +184,175 @@ function socketRequest(
 
 	return promise;
 }
+
+/**
+ * Held-open event stream (events.subscribe — the one streaming exception to
+ * one-request-per-connection). Every parsed NDJSON line reaches onFrame as a
+ * decoded JSON value; onClosed fires exactly once when the connection ends,
+ * whichever side closed it. `close()` also emits onClosed — local teardown is
+ * still "the stream ended" — but never twice. There is deliberately no
+ * request/idle timeout: the stream is long-lived by design; the only bound is
+ * connectMs. Callers bound any waits they impose on pushed frames
+ * (e.g. lifecycle's subscription_started wait after events_lost).
+ */
+export interface EventStreamHandlers {
+	onFrame(frame: unknown): void;
+	onClosed(): void;
+}
+
+export interface EventStream {
+	readonly socketPath: string;
+	close(): void;
+}
+
+export type EventStreamOpener = (
+	socketPath: string,
+	method: string,
+	params: unknown,
+	handlers: EventStreamHandlers,
+) => Promise<EventStream>;
+
+/** Real-socket EventStreamOpener bound to Herdr's socket (default seam). */
+export function socketEventStream(
+	socketPath: string,
+	options: SocketTransportOptions = {},
+): EventStreamOpener {
+	const connectMs = options.connectMs ?? 2000;
+	return (_path, method, params, handlers) =>
+		openEventStream(socketPath, method, params, handlers, connectMs);
+}
+
+function openEventStream(
+	socketPath: string,
+	method: string,
+	params: unknown,
+	handlers: EventStreamHandlers,
+	connectMs: number,
+): Promise<EventStream> {
+	const { promise, resolve, reject } = Promise.withResolvers<EventStream>();
+	const id = `lens-${Date.now().toString(36)}-${nextRequestId++}`;
+	const decoder = new StringDecoder("utf8");
+	let socket: Socket | undefined;
+	let buffer = "";
+	let settled = false; // openEventStream promise resolved or rejected
+	let closed = false; // stream ended; handlers.onClosed delivered exactly once
+
+	function notifyClosed(): void {
+		closed = true;
+		handlers.onClosed();
+	}
+
+	function finishOpen(error: Error | null, stream?: EventStream): void {
+		if (settled) return;
+		settled = true;
+		clearTimeout(connectTimer);
+		if (error === null && stream !== undefined) {
+			resolve(stream);
+		} else {
+			reject(error ?? new Error(`herdr event stream failed (${method})`));
+		}
+	}
+
+	function handleLine(line: string): void {
+		if (closed) return;
+		let message: unknown;
+		try {
+			message = JSON.parse(line);
+		} catch {
+			return; // not JSON — not a protocol frame
+		}
+		if (message === null || typeof message !== "object") return;
+		handlers.onFrame(message);
+	}
+
+	function handleChunk(chunk: string): void {
+		buffer += chunk;
+		let newline = buffer.indexOf("\n");
+		while (newline >= 0 && !closed) {
+			const line = buffer.slice(0, newline);
+			buffer = buffer.slice(newline + 1);
+			const trimmed = line.trim();
+			if (trimmed !== "") handleLine(trimmed);
+			newline = buffer.indexOf("\n");
+		}
+	}
+
+	const stream: EventStream = {
+		socketPath,
+		close() {
+			if (closed) return;
+			const s = socket;
+			socket = undefined;
+			if (s !== undefined) {
+				try {
+					s.close();
+				} catch {
+					// best-effort; the stream is dead either way
+				}
+			}
+			notifyClosed();
+		},
+	};
+
+	const pending = Bun.connect({
+		unix: socketPath,
+		socket: {
+			data(_socket: Socket, data: Buffer) {
+				// StringDecoder keeps an incomplete multi-byte char buffered across
+				// chunks; Buffer.toString would corrupt it into U+FFFD.
+				handleChunk(decoder.write(data));
+			},
+			close(_socket: Socket, _error: unknown) {
+				if (closed) return;
+				// flush partial bytes and a last line missing its trailing newline
+				handleChunk(decoder.end());
+				if (buffer.trim() !== "") handleLine(buffer);
+				socket = undefined;
+				if (!settled) {
+					finishOpen(new Error(`herdr event stream closed before open (${method})`));
+				}
+				notifyClosed();
+			},
+			connectError(_socket: Socket, error: unknown) {
+				if (closed) return;
+				finishOpen(new Error(`herdr socket connect failed (${socketPath}): ${String(error)}`));
+				notifyClosed();
+			},
+			drain() {},
+			error(_socket: Socket, error: unknown) {
+				if (closed) return;
+				if (!settled) {
+					finishOpen(new Error(`herdr event stream error (${method}): ${String(error)}`));
+				}
+				notifyClosed();
+			},
+			timeout() {
+				// an idle long-lived stream is normal; if the runtime tears the
+				// socket down afterwards the close handler reports it
+			},
+		},
+	});
+
+	const connectTimer = setTimeout(() => {
+		finishOpen(new Error(`herdr socket connect timeout after ${connectMs}ms (${socketPath})`));
+		void pending.then((s) => s.close()).catch(() => {});
+	}, connectMs);
+
+	pending.then(
+		(s) => {
+			if (closed || settled) {
+				s.close();
+				return;
+			}
+			socket = s;
+			clearTimeout(connectTimer);
+			s.write(`${JSON.stringify({ id, method, params: params ?? {} })}\n`);
+			finishOpen(null, stream);
+		},
+		(error: unknown) => {
+			finishOpen(new Error(`herdr socket connect failed (${socketPath}): ${String(error)}`));
+		},
+	);
+
+	return promise;
+}

@@ -3,7 +3,12 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Socket } from "bun";
-import { HerdrApiError, socketTransport } from "../../src/herdr/transport";
+import {
+	type EventStream,
+	HerdrApiError,
+	socketEventStream,
+	socketTransport,
+} from "../../src/herdr/transport";
 
 /**
  * Wire-level test server: NDJSON over a unix socket, one request per line,
@@ -88,7 +93,7 @@ function startServer(
 	};
 }
 
-let server: Server | null = null;
+let server: Server | StreamServer | null = null;
 afterEach(() => {
 	server?.stop();
 	server = null;
@@ -162,5 +167,122 @@ describe("socketTransport request/response", () => {
 		const t = socketTransport(join(dir, "nonexistent.sock"), { connectMs: 500 });
 		await expect(t.request("ping", {})).rejects.toThrow();
 		rmSync(dir, { recursive: true, force: true });
+	});
+});
+
+/**
+ * Wire-level server for the held-open stream: captures the first request line,
+ * then lets the test push frames and close the connection from server side.
+ */
+interface StreamServer {
+	socketPath: string;
+	captured: CapturedRequest[];
+	/** Resolves once the client's request socket has connected. */
+	connected: Promise<Socket>;
+	write(frame: unknown): void;
+	endServerSocket(): void;
+	stop(): void;
+}
+
+function startStreamServer(): StreamServer {
+	const captured: CapturedRequest[] = [];
+	const dir = mkdtempSync(join(tmpdir(), "herdr-lens-test-"));
+	const socketPath = join(dir, "herdr.sock");
+	let serverSocket: Socket | null = null;
+	const connected = Promise.withResolvers<Socket>();
+	const listener = Bun.listen<undefined>({
+		unix: socketPath,
+		socket: {
+			data(socket: Socket, data: Buffer) {
+				serverSocket = socket;
+				connected.resolve(socket);
+				for (const line of data.toString("utf8").split("\n")) {
+					if (line.trim() === "") continue;
+					try {
+						const req = JSON.parse(line) as CapturedRequest;
+						if (typeof req.id === "string") captured.push(req);
+					} catch {
+						// ignore malformed lines in the test server
+					}
+				}
+			},
+			close() {},
+			error(_socket: Socket, _error: unknown) {},
+		},
+	});
+	return {
+		socketPath,
+		captured,
+		connected: connected.promise,
+		write: (frame) => {
+			serverSocket?.write(`${JSON.stringify(frame)}\n`);
+		},
+		endServerSocket: () => {
+			serverSocket?.end();
+		},
+		stop: () => {
+			listener.stop(true);
+			rmSync(dir, { recursive: true, force: true });
+		},
+	};
+}
+
+describe("socketEventStream held-open stream", () => {
+	test("sends events.subscribe once, then keeps delivering pushed frames", async () => {
+		const srv = startStreamServer();
+		server = srv;
+		const frames: unknown[] = [];
+		const secondFrame = Promise.withResolvers<unknown>();
+		const closed = Promise.withResolvers<void>();
+		const stream = await socketEventStream(srv.socketPath)(
+			srv.socketPath,
+			"events.subscribe",
+			{ subscriptions: [{ type: "tab.closed" }] },
+			{
+				onFrame: (f) => {
+					frames.push(f);
+					if (frames.length === 2) secondFrame.resolve(f);
+				},
+				onClosed: () => closed.resolve(),
+			},
+		);
+
+		await srv.connected;
+		srv.write({ id: "sub", result: { type: "subscription_started" } });
+		srv.write({ event: "tab.closed", data: { workspace_id: "w1", tab_id: "t9" } });
+		await secondFrame.promise;
+
+		expect(srv.captured).toHaveLength(1);
+		const req = srv.captured[0];
+		if (req === undefined) throw new Error("expected a captured request");
+		expect(req.method).toBe("events.subscribe");
+		expect(frames).toEqual([
+			{ id: "sub", result: { type: "subscription_started" } },
+			{ event: "tab.closed", data: { workspace_id: "w1", tab_id: "t9" } },
+		]);
+
+		srv.endServerSocket();
+		await closed.promise; // server-initiated close surfaces as onClosed
+		stream.close();
+	});
+
+	test("close() ends the stream and stops frame delivery", async () => {
+		const srv = startStreamServer();
+		server = srv;
+		const frames: unknown[] = [];
+		const closed = Promise.withResolvers<void>();
+		const stream: EventStream = await socketEventStream(srv.socketPath)(
+			srv.socketPath,
+			"events.subscribe",
+			{},
+			{ onFrame: (f) => frames.push(f), onClosed: () => closed.resolve() },
+		);
+
+		stream.close();
+		await closed.promise; // local close reports onClosed exactly once
+
+		srv.endServerSocket();
+		stream.close(); // idempotent: no second onClosed
+		expect(frames).toEqual([]);
 	});
 });
