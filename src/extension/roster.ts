@@ -212,7 +212,7 @@ export class Roster {
 	}
 
 	private applyStatus(worker: WorkerSnapshot, status: string, source: string): void {
-		const mapped = STATUS_MAP[status];
+		const mapped = Object.hasOwn(STATUS_MAP, status) ? STATUS_MAP[status] : undefined;
 		if (mapped === undefined) {
 			this.notice(
 				`worker ${worker.id}: unrecognized ${source} status "${status}"; keeping "${worker.status}"`,
@@ -263,6 +263,7 @@ export class Roster {
 
 	private notice(message: string): void {
 		this.noticeLog.push(message);
+		if (this.noticeLog.length > 100) this.noticeLog.shift();
 		for (const cb of this.noticeCbs) {
 			try {
 				cb(message);

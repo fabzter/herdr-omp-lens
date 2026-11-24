@@ -328,3 +328,55 @@ describe("events (P2-R4)", () => {
 		expect(w.activity).toBe("agent_start");
 	});
 });
+
+describe("prototype-key status strings (regression)", () => {
+	test("Object.prototype member names are unrecognized: keep last status + notice", () => {
+		const WORKER_STATUSES = new Set([
+			"queued",
+			"running",
+			"idle",
+			"parked",
+			"completed",
+			"failed",
+			"aborted",
+		]);
+		for (const protoKey of ["toString", "constructor", "hasOwnProperty", "valueOf"]) {
+			const r = new Roster();
+			const { notices } = collect(r);
+			r.applySpawn(spawn("w1"));
+			r.applyLifecycle(lifecycle("w1", "started"));
+			r.applyProgress(progress("w1", protoKey));
+			const w = onlyWorker(r);
+			expect(w.status).toBe("running");
+			expect(WORKER_STATUSES.has(w.status)).toBe(true);
+			expect(notices.length).toBeGreaterThanOrEqual(1);
+		}
+	});
+
+	test("prototype-key status on a lifecycle frame also keeps last status + notice", () => {
+		const r = new Roster();
+		const { notices } = collect(r);
+		r.applySpawn(spawn("w1"));
+		r.applyLifecycle(lifecycle("w1", "started"));
+		r.applyLifecycle(lifecycle("w1", "toString"));
+		expect(onlyWorker(r).status).toBe("running");
+		expect(notices.length).toBeGreaterThanOrEqual(1);
+	});
+});
+
+describe("noticeLog bound (regression)", () => {
+	test("notices() keeps only the last 100 entries; onNotice still delivers all", () => {
+		const r = new Roster();
+		const { notices } = collect(r);
+		r.applySpawn(spawn("w1"));
+		r.applyLifecycle(lifecycle("w1", "started"));
+		for (let i = 0; i < 150; i++) {
+			r.applyProgress(progress("w1", `bogus_${i}`));
+		}
+		expect(r.notices()).toHaveLength(100);
+		expect(notices.length).toBe(150);
+		const kept = r.notices();
+		expect(kept[0]).toContain("bogus_50");
+		expect(kept.at(-1)).toContain("bogus_149");
+	});
+});
