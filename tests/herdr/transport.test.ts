@@ -22,7 +22,10 @@ interface Server {
 	stop(): void;
 }
 
-function startServer(handler: (req: CapturedRequest) => Record<string, unknown> | null): Server {
+function startServer(
+	handler: (req: CapturedRequest) => Record<string, unknown> | null,
+	options: { splitMultibyte?: boolean } = {},
+): Server {
 	const captured: CapturedRequest[] = [];
 	const dir = mkdtempSync(join(tmpdir(), "herdr-lens-test-"));
 	const socketPath = join(dir, "herdr.sock");
@@ -50,6 +53,23 @@ function startServer(handler: (req: CapturedRequest) => Record<string, unknown> 
 					if (response === null) {
 						// simulate a stalled server: never respond
 						continue;
+					}
+					if (options.splitMultibyte) {
+						// split inside the FIRST multi-byte UTF-8 sequence so the two
+						// halves arrive in separate data events
+						const bytes = Buffer.from(`${JSON.stringify(response)}\n`, "utf8");
+						const firstMultibyte = bytes.findIndex((b) => b >= 0x80);
+						if (firstMultibyte >= 0) {
+							socket.write(bytes.subarray(0, firstMultibyte + 1));
+							setTimeout(() => {
+								try {
+									socket.write(bytes.subarray(firstMultibyte + 1));
+								} catch {
+									// client already closed; test is done
+								}
+							}, 25);
+							continue;
+						}
 					}
 					socket.write(`${JSON.stringify(response)}\n`);
 				}
@@ -116,6 +136,19 @@ describe("socketTransport request/response", () => {
 		expect(await t.request("a", {})).toEqual({ type: "ok", echo: "a" });
 		expect(await t.request("b", {})).toEqual({ type: "ok", echo: "b" });
 		expect(server.captured).toHaveLength(2);
+	});
+
+	test("decodes a multi-byte UTF-8 char split across two socket chunks", async () => {
+		const title = "señal órbita 🚀";
+		server = startServer(
+			(req) => ({ id: req.id, result: { type: "pane_info", pane: { title } } }),
+			{ splitMultibyte: true },
+		);
+		const t = socketTransport(server.socketPath);
+		const result = (await t.request("pane.get", { pane_id: "w1:p1" })) as Record<string, unknown>;
+		const pane = result.pane as Record<string, unknown>;
+		expect(pane.title).toBe(title);
+		expect(pane.title).not.toContain("�");
 	});
 
 	test("request timeout rejects when server never responds", async () => {

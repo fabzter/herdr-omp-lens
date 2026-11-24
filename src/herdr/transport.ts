@@ -10,6 +10,7 @@
  * local socket.
  */
 
+import { StringDecoder } from "node:string_decoder";
 import type { Socket } from "bun";
 
 export interface HerdrTransport {
@@ -62,6 +63,7 @@ function socketRequest(
 ): Promise<unknown> {
 	const { promise, resolve, reject } = Promise.withResolvers<unknown>();
 	const id = `lens-${Date.now().toString(36)}-${nextRequestId++}`;
+	const decoder = new StringDecoder("utf8");
 	let socket: Socket | undefined;
 	let buffer = "";
 	let settled = false;
@@ -130,11 +132,15 @@ function socketRequest(
 		unix: socketPath,
 		socket: {
 			data(_socket: Socket, data: Buffer) {
-				handleChunk(data.toString("utf8"));
+				// StringDecoder keeps an incomplete multi-byte char buffered across
+				// chunks; Buffer.toString would corrupt it into U+FFFD.
+				handleChunk(decoder.write(data));
 			},
 			close(_socket: Socket, _error: unknown) {
 				if (settled) return;
-				// final chance: a response line missing its trailing newline
+				// flush any trailing partial bytes, then a final-chance response
+				// line missing its trailing newline
+				handleChunk(decoder.end());
 				if (buffer.trim() !== "") handleLine(buffer);
 				if (!settled) {
 					finish(new Error(`herdr socket closed before response (${method})`));
