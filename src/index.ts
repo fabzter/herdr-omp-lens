@@ -7,8 +7,20 @@
  *   - src/extension (task 4+: OMP extension entry, bound via
  *     package.json `omp.extensions` → ./src/extension/index.ts)
  *
- * Task 1 ships only the scaffold; this file intentionally exports
- * nothing so downstream tasks add their re-exports here.
+ * Task 1 ships only the scaffold; downstream tasks add their re-exports here.
  */
 
-export {};
+export {
+	decodeClientMessage,
+	decodeMessage,
+	encodeMessage,
+} from "./protocol/codec";
+export type {
+	ClientDecodeResult,
+	ClientMessage,
+	DecodeResult,
+	Message,
+	WorkerSnapshot,
+	WorkerStatus,
+} from "./protocol/types";
+export { PROTOCOL_VERSION } from "./protocol/types";
