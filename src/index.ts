@@ -21,6 +21,7 @@ export type { CallerContext } from "./herdr/context";
 export { callerContext, isHerdrEnv } from "./herdr/context";
 export { assertAllowedRequest, DENIED_METHODS, HerdrForbiddenError } from "./herdr/guards";
 export type { HerdrTransport, SocketTransportOptions } from "./herdr/transport";
+export { HerdrApiError, socketTransport } from "./herdr/transport";
 export type {
 	LifecycleHandlers,
 	PaneInfo,
