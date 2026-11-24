@@ -10,6 +10,8 @@
  * Task 1 ships only the scaffold; downstream tasks add their re-exports here.
  */
 
+export type { CallerContext } from "./herdr/context";
+export { callerContext, isHerdrEnv } from "./herdr/context";
 export {
 	decodeClientMessage,
 	decodeMessage,
