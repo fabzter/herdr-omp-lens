@@ -1,17 +1,33 @@
 /**
  * herdr-omp-lens — public barrel.
  *
- * Later tasks own the real modules:
  *   - src/protocol  (task 2: wire protocol types & codecs)
- *   - src/herdr     (task 3: herdr pane/session client)
- *   - src/extension (task 4+: OMP extension entry, bound via
+ *   - src/herdr     (tasks 3–5: caller context, guarded no-focus adapter,
+ *                  lifecycle subscription)
+ *   - src/extension (task 6: OMP extension entry, bound via
  *     package.json `omp.extensions` → ./src/extension/index.ts)
- *
- * Task 1 ships only the scaffold; downstream tasks add their re-exports here.
  */
 
+export {
+	createOverviewTab,
+	getPane,
+	guardedRequest,
+	reportMetadata,
+	runInPane,
+	snapshot,
+	splitPane,
+} from "./herdr/adapter";
 export type { CallerContext } from "./herdr/context";
 export { callerContext, isHerdrEnv } from "./herdr/context";
+export { assertAllowedRequest, DENIED_METHODS, HerdrForbiddenError } from "./herdr/guards";
+export type { HerdrTransport, SocketTransportOptions } from "./herdr/transport";
+export type {
+	LifecycleHandlers,
+	PaneInfo,
+	PaneMetadata,
+	SessionSnapshot,
+	Subscription,
+} from "./herdr/types";
 export {
 	decodeClientMessage,
 	decodeMessage,
