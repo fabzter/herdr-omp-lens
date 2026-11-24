@@ -14,9 +14,12 @@ OMP stays the boss. It owns the workers and their results. This is just a window
 
 ## Status
 
-🚧 **Design phase.** The architecture is approved and the long-horizon plan is written. We're about
-to run a small probe (Phase 0) to confirm OMP's live event surface before building. Nothing is
-installed yet.
+🛠️ **Building v1.** The design is approved, the native event surface is probed and confirmed, an
+adversarial review (18 findings) is fully addressed, and the **P1 foundation is implemented and
+reviewed clean** on `feat/v1-foundation` — package/toolchain, the versioned NDJSON bridge protocol,
+the guarded no-focus Herdr adapter, lifecycle subscription with `events_lost` recovery, and the
+activation gate. 96 tests green; `tsc` and `biome` clean. Nothing is installed into your daily
+session yet.
 
 - **v1 — "The Window":** read-only observation. One overview tab + optional splits, auto-open and
   reopen-on-next-subtask, OMP-like detail, finished workers tucked away, history you can revisit.
@@ -43,7 +46,9 @@ worker keeps going. Closing a window never stops the work.
 
 - [Software Design Document](docs/superpowers/specs/2026-11-19-herdr-omp-lens-design.md) — the source of truth.
 - [Master plan](docs/plans/00-master-plan.md) — v1/v2 horizon, phases, Definition of Done.
+- [P1 implementation plan](docs/superpowers/plans/2026-11-24-v1-foundation.md) — the foundation, task by task.
 - [Seam research](docs/analysis/research-seams.md) — cited evidence for what OMP and Herdr expose.
+- [Adversarial review](docs/analysis/review-agy-hydrogen-2026-11-24.md) — the 18 findings and how they were fixed.
 - [ADR-0001](docs/adr/0001-observation-seam.md) — why an in-process extension + local bridge.
 - [Contributing](CONTRIBUTING.md) — dev setup, tests, and review gates.
 
@@ -54,7 +59,7 @@ worker keeps going. Closing a window never stops the work.
 
 ## License
 
-To be confirmed (proposed MIT — see open question Q-02 in the master plan).
+[MIT](LICENSE) © 2026 Fabrizio Hernandez.
 
 ---
 
