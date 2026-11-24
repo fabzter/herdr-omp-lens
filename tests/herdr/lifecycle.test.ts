@@ -257,6 +257,39 @@ describe("subscribeLifecycle", () => {
 		expect(onEventsLost).toHaveBeenCalledTimes(1);
 	});
 
+	test("close() while a resubscribe open is pending suppresses onEventsLost on open failure", async () => {
+		const onEventsLost = mock(() => {});
+		const opened: OpenedStream[] = [];
+		const pendingOpens: Array<ReturnType<typeof Promise.withResolvers<EventStream>>> = [];
+		let calls = 0;
+		const openStream: EventStreamOpener = (_socketPath, method, params, handlers) => {
+			calls++;
+			if (calls === 1) {
+				const stream = new MockStream(handlers);
+				opened.push({ method, params, stream });
+				return Promise.resolve(stream);
+			}
+			// resubscribe open stays pending until the test settles it — models the
+			// up-to-connectMs window when the Herdr socket is unreachable
+			const gate = Promise.withResolvers<EventStream>();
+			pendingOpens.push(gate);
+			return gate.promise;
+		};
+
+		const sub = await subscribeLifecycle(CTX, { onEventsLost }, openStream);
+		openedAt(opened, 0).stream.push(EVENTS_LOST);
+		await until(() => pendingOpens.length === 1); // resubscribe open in-flight
+
+		const gate = pendingOpens[0];
+		if (gate === undefined) throw new Error("expected a pending resubscribe open");
+		const closePromise = sub.close(); // close() awaits the in-flight recovery
+		gate.reject(new Error("herdr socket connect failed"));
+		await closePromise;
+		await drain();
+
+		expect(onEventsLost).not.toHaveBeenCalled();
+	});
+
 	test("close() ends the subscription: stream closed, no dispatch, no recovery", async () => {
 		const onTabClosed = mock(() => {});
 		const onEventsLost = mock(() => {});

@@ -279,6 +279,7 @@ export async function subscribeLifecycle(
 				// resubscribe could not even open; report the loss once and stay dead
 				// rather than spin on a broken socket. The caller's reconcile still
 				// runs — cached state is stale either way (V-HDR-4).
+				if (closed) return; // close() during the failed open ends dispatch
 				notifyLost();
 				return;
 			}
