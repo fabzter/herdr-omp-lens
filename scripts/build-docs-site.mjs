@@ -32,6 +32,7 @@ const groups = [
   { name: "Evidence", docs: [
     { src: "docs/analysis/research-seams.md", out: "research-seams.html", title: "Seam research (cited)" },
     { src: "docs/analysis/phase-0-probe-report.md", out: "probe-report.html", title: "Phase 0 probe report" },
+    { src: "docs/analysis/review-agy-hydrogen-2026-11-24.md", out: "review-agy.html", title: "Adversarial review (agy-hydrogen)" },
   ]},
   { name: "Contributing", docs: [
     { src: "CONTRIBUTING.md", out: "contributing.html", title: "Contributing guide" },
