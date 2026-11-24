@@ -8,6 +8,15 @@
  *     package.json `omp.extensions` → ./src/extension/index.ts)
  */
 
+export type {
+	LensCommandDefinition,
+	LensCommandHandler,
+	LensEventBus,
+	LensExtensionApi,
+	LensHookHandler,
+} from "./extension/api";
+export { default as lensExtension } from "./extension/index";
+export { resolveViewerCommand } from "./extension/resolve";
 export {
 	createOverviewTab,
 	getPane,
