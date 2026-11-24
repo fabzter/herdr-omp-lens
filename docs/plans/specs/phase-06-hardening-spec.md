@@ -23,11 +23,14 @@ to shipped behavior, and a DoD-v1 evidence report for owner sign-off (SDD §10, 
 
 In scope:
 - **Tamper/guard tests** for every safety invariant and Herdr hazard (SDD §10, V-HDR-5/6/7).
-- **Static-analysis guards** over `src/` asserting forbidden calls can never be emitted.
+- **Static-analysis + runtime transport guards** asserting forbidden Herdr calls can never be
+  emitted — the source scan plus the denylist at `src/herdr`'s single transport boundary (F-18/D5).
 - **Isolated-session E2E** in a dedicated named Herdr session — never the daily workspace.
-- **Phase 0 caveat closure:** interactive-TUI confirmation, `idle`/`parked`/`aborted` transitions,
-  thinking-visibility mirroring, `detached` flag behavior in TUI.
-- **Fail-soft verification:** bridge/Herdr death, malformed frames, shape drift → OMP unaffected.
+- **Phase 0 caveat closure:** interactive-TUI confirmation, `queued`/`idle`/`parked`/`aborted`
+  transitions, thinking-visibility **viewer toggle** (D4: default hidden — no documented OMP API to
+  read, F-11), `detached` flag behavior in TUI.
+- **Fail-soft verification:** bridge/Herdr death, malformed frames, shape drift → OMP unaffected;
+  degraded-mode artifact-dir discovery (D1), adapter timeouts + circuit-break (F-15).
 - **NFR evidence:** socket 0600, no network bind, ≤150 ms coalescing, bounded buffers.
 - **Clean-profile install** (`omp plugin link`) on the pinned versions (OMP 19.0.1 / Herdr 0.9.5).
 - **Docs reconcile** + **DoD-v1 evidence report** + owner sign-off walkthrough.
@@ -43,53 +46,88 @@ upstream submission.
   manual/witnessed capture. *Accept:* `docs/analysis/dod-v1-report.md` (or equivalent artifact) has
   a row per requirement with `pass | fail | manual-evidence`; no row is blank or untraced; every
   `manual-evidence` row names the capture (log/screenshot/session id).
-- **P6-R2 Invariant tamper tests (SDD §10).** One tamper test per invariant, each proven to **fail on
-  the broken state**: (a) worker survives viewer close, (b) no duplicate worker is spawned by any
-  view operation, (c) no focus theft across open/split/reopen, (d) `control.*` frames rejected per
-  FR-11, (e) extension is a no-op outside Herdr per FR-01, (f) OMP turn completes with Herdr/bridge
-  dead per FR-12. *Accept:* for each test, a deliberate sabotage run (assertion or fixture flipped)
+- **P6-R2 Invariant tamper tests (SDD §10, F-15).** One tamper test per invariant, each proven to
+  **fail on the broken state**: (a) worker survives viewer close, (b) no duplicate worker is
+  spawned by any view operation, (c) no focus theft across open/split/reopen, (d) `control.*`
+  frames rejected per FR-11, (e) extension is a no-op outside Herdr per FR-01, (f) OMP turn
+  completes with Herdr/bridge dead per FR-12, (g) all `pi.on`/`pi.events.on` handlers enqueue
+  synchronously and never await I/O — fire-and-forget, including inside `before_subagent_spawn`
+  (F-15/FR-12). *Accept:* for each test, a deliberate sabotage run (assertion or fixture flipped)
   produces a red result, quoted in the evidence report; the unmodified suite is green.
-- **P6-R3 Herdr hazard static guards (V-HDR-5/6/7, U-HDR-4).** A source-scanning guard asserts
-  `src/` never emits: `layout.apply` with `tab_id`, `agent start`, `pane report_agent`,
-  `agent.view.set`; and that every `tab.create`/`pane.split`/`pane.run` (API or CLI) path carries
-  `focus:false`/`--no-focus`, and metadata goes only through `pane.report_metadata`. *Accept:* the
-  guard fails when a fixture file containing each forbidden call is added to the scan set; the real
-  tree scans clean; dynamic-construction review note records that no RPC payload is built by string
-  concatenation that could evade the scan.
-- **P6-R4 Subscribe-before-create + reconcile (V-HDR-4, R-07).** Tests prove the lifecycle
+- **P6-R3 Herdr hazard guards (V-HDR-5/6/7, U-HDR-4, F-18/D5).** Two layers. (a) A
+  source-scanning guard asserts `src/` never emits: `layout.apply` with `tab_id`, `agent start`,
+  `pane report_agent`, `agent.view.set`; and that every `tab.create`/`pane.split`/`pane.run` (API
+  or CLI) path carries `focus:false`/`--no-focus`, and metadata goes only through
+  `pane.report_metadata` — always with the required `source` field (F-12). (b) A **runtime
+  transport guard** enforces the same command denylist + `focus:false` requirement at `src/herdr`'s
+  single socket-transport boundary, so dynamically-constructed calls cannot evade the scan.
+  *Accept:* the source guard fails when a fixture file containing each forbidden call is added to
+  the scan set and the real tree scans clean; a transport-guard tamper test fails when the denylist
+  is removed or bypassed even for a runtime-composed command; a review note records that no RPC
+  payload is built by string concatenation that could evade either layer.
+- **P6-R4 Subscribe-before-create + reconcile (V-HDR-4, R-07, F-12).** Tests prove the lifecycle
   subscription is established before any `tab.create`, viewer liveness is always confirmable via
   `getPane`/`snapshot` (never purely event-derived), `pane.moved` updates stored ids, and an
-  `events_lost` error triggers resubscribe + snapshot reconcile. *Accept:* ordered-mock tests assert
-  call sequence; a simulated `events_lost` run ends with a reconciled roster and no duplicate viewer.
-- **P6-R5 Phase 0 caveat closure (U-OMP-1/3/4/5, probe caveats 1–4).** Live-verified in an interactive
-  TUI session inside the isolated Herdr session: `task:subagent:{event,progress,lifecycle}` frames
-  flow identically to print mode; `idle`, `parked`, and `aborted` transitions are each exercised and
-  land correctly in the roster (`WorkerStatus` union); the viewer mirrors OMP's thinking-visibility
-  display rather than dumping raw thinking; `detached` flag semantics confirmed for TUI async spawns.
-  *Accept:* evidence report records each transition observed with its raw bus frame; any transition
-  that cannot be triggered on 19.0.1 is recorded as a known limitation, not silently skipped.
-- **P6-R6 Isolated named-session E2E (SDD §11).** One scripted E2E in a named, disposable Herdr
-  session covers: auto-open on first spawn, manual close → next-subtask reopen (exactly one tab),
-  optional no-focus split, finished-collapse, history after OMP restart marked not-live (FR-09), and
-  focus preservation throughout (FR-13). U-HDR-1..5 findings are recorded. *Accept:* the E2E script
-  runs green against the isolated session; the daily workspace is enumerated before/after and shown
-  untouched; a viewer misclassified as an agent (U-HDR-1) fails the run.
-- **P6-R7 Local-only & fail-soft evidence (NFR-01, FR-03, FR-12).** Verify the unix socket exists
-  with mode `0600`, no TCP listener is bound by extension or viewer, malformed/truncated NDJSON and
-  wrong-`v` frames are rejected without a thrown escape, and a mid-turn Herdr kill leaves the OMP
-  turn completing normally with a single `notice`. *Accept:* `stat`/`lsof` evidence in the report;
-  fuzzed-frame unit tests green; the kill-Herdr E2E step shows the parent turn finishing.
-- **P6-R8 Performance bounds (NFR-03).** Progress coalescing emits at most one bridge delta per
-  ≤150 ms window under rapid progress frames; bridge buffers are bounded; viewer tail does not grow
-  unbounded (rotate/snapshot). *Accept:* a synthetic 100-frame burst test asserts the coalesced
-  count; a long-run soak (≥10 min worker churn) shows flat memory/line counts for the viewer.
-- **P6-R9 Version discipline & clean-profile install (NFR-02, FR-15).** On pinned OMP 19.0.1 /
-  Herdr 0.9.5: `omp plugin link` (or `install`) into a clean profile loads the extension, and first
-  delegation opens the view. Feature-detection degrades — never crashes — when a bus channel or Herdr
-  command is absent. *Accept:* clean-profile run documented with version strings; a simulated
+  `events_lost` error triggers P1's **transparent resubscribe** (the adapter waits
+  `subscription_started` itself) plus the `onEventsLost` hook → P4 `snapshot()` reconcile of owned
+  ids — never a double subscription. *Accept:* ordered-mock tests assert call sequence; a simulated
+  `events_lost` run ends with exactly one live subscription, a reconciled roster, and no duplicate
+  viewer.
+- **P6-R5 Phase 0 caveat closure (U-OMP-1/3/4/5, probe caveats 1–4, F-11).** Live-verified in an
+  interactive TUI session inside the isolated Herdr session:
+  `task:subagent:{event,progress,lifecycle}` frames flow identically to print mode; `queued`,
+  `idle`, `parked`, and `aborted` transitions are each exercised and land correctly in the roster
+  (`WorkerStatus` union); the viewer's thinking display is a **viewer toggle, default hidden**
+  (D4 — OMP's thinking-visibility setting has no documented readable API, F-11), never a
+  raw-thinking dump; `detached` flag semantics confirmed for TUI async spawns. The report also
+  records the already-verified host-less facts (2026-11-24 probe): persisted subagent JSONL lives
+  at `~/.omp/agent/sessions/<encoded-cwd>/<ts>_<session-id>/<worker-id>.jsonl` (Phase 0's `$TMPDIR`
+  path was a `--no-session` artifact); `omp render <sessionFile>` exits 0 host-less;
+  `omp read history://<id>` needs the owning live session and is used only in-session (RC-15).
+  *Accept:* evidence report records each transition observed with its raw bus frame and quotes the
+  host-less render results; any transition that cannot be triggered on 19.0.1 is recorded as a
+  known limitation, not silently skipped.
+- **P6-R6 Isolated named-session E2E (SDD §11, F-14/D2/D3).** One scripted E2E in a named,
+  disposable Herdr session covers: auto-open on first spawn; manual close → next-subtask reopen
+  (exactly one tab); a read-only `/lens split <id>` slash command opening a no-focus worker-scoped
+  viewer (`LENS_WORKER_ID` env, D3); finished-collapse; **OMP restart → the overview auto-opens on
+  startup when non-empty history exists** (D2), a surviving viewer tab is reused/reconnected to the
+  new session socket (never duplicated), and prior workers render marked not-live (FR-09); and
+  focus preservation throughout (FR-13) **including a spawn while the user is focused in a
+  different workspace** (cross-workspace focus theft, U-HDR-2/F-14). U-HDR-1..5 findings are
+  recorded. *Accept:* the E2E script runs green against the isolated session; the daily workspace
+  is enumerated before/after and shown untouched; a viewer misclassified as an agent (U-HDR-1)
+  fails the run; if `tab.create` steals cross-workspace focus on 0.9.5 the FR-13 claim is scoped
+  and recorded as a limitation — never silently passed.
+- **P6-R7 Local-only & fail-soft evidence (NFR-01, FR-03, FR-12, F-15/D1).** Verify the bridge
+  socket exists with mode `0600` inside a `0700` per-session directory (unique per OMP
+  session/PID) and is unlinked on `BridgeHandle.close()`/SIGINT/SIGTERM; no TCP listener is bound
+  by extension or viewer; malformed/truncated NDJSON, wrong-`v` frames, and injected `control.*`
+  frames are rejected at the `decodeClientMessage`/`decodeMessage` boundary without a thrown escape
+  (F-07/FR-11); a second OMP session in the same workspace binds a **distinct** socket (no
+  `EADDRINUSE`/hijack); a **stalled** (not refused) Herdr socket trips the adapter's per-call
+  timeouts (2s connect / 5s RPC) and circuit-breaks to `degraded`; bus-absent degraded mode still
+  discovers workers by scanning the verified session artifact dir (D1) while live
+  discovery/counter promises (FR-02/04/10) are explicitly relaxed; and a mid-turn Herdr kill leaves
+  the OMP turn completing normally with a single `notice`. *Accept:* `stat`/`lsof`/unlink evidence
+  in the report; fuzzed-frame + injected-`control.*` unit tests green; stalled-socket and
+  second-session fixtures green; the kill-Herdr E2E step shows the parent turn finishing.
+- **P6-R8 Performance bounds (NFR-03, F-18/D5).** Progress coalescing emits at most one bridge
+  delta per ≤150 ms window under rapid progress frames; bridge buffers are bounded; viewer tail
+  does not grow unbounded (rotate/snapshot). Verification is **deterministic, not wall-clock**.
+  *Accept:* a synthetic 100-frame burst test asserts the exact coalesced delta count; a
+  frame-volume run (≥50k frames through encode/decode/roster/viewer) asserts flat heap and bounded
+  line counts — no ≥10-minute soak — with numbers quoted in the evidence report.
+- **P6-R9 Version discipline & clean-profile install (NFR-02, FR-15, F-16).** On pinned OMP
+  19.0.1 / Herdr 0.9.5: `omp plugin link` (or `install`) into a clean profile loads the extension,
+  and first delegation opens the view **from an arbitrary working directory** —
+  `resolveViewerCommand()` resolves against the installed package root, never the session cwd.
+  Feature-detection degrades — never crashes — when a bus channel or Herdr command is absent.
+  *Accept:* clean-profile run documented with version strings and a non-repo cwd; a simulated
   missing-channel run produces `notice` + fallback, not a throw.
 - **P6-R10 Docs reconcile (NFR-06).** README, CONTRIBUTING, architecture notes, and a limitations
-  section match shipped behavior exactly: v1 read-only, direct workers only, reopen semantics,
+  section match shipped behavior exactly: v1 read-only (observation plus the `/lens split` viewer
+  command, no worker control), direct workers only, reopen semantics, degraded-mode behavior (D1),
   history caveat (R-04), pinned versions. *Accept:* a doc-vs-shipped checklist is reviewed line by
   line; every documented command was executed and its output quoted.
 - **P6-R11 Owner sign-off.** Evidence pack presented; open items are either closed or converted to
@@ -98,19 +136,26 @@ upstream submission.
 
 ## Interfaces produced/consumed
 
-**Consumed (unchanged):** `PROTOCOL_VERSION`, `WorkerStatus`, `WorkerSnapshot`, `Message`,
-`encodeMessage`/`decodeMessage` (P1 protocol); `isHerdrEnv`/`callerContext`/`createOverviewTab`/
-`splitPane`/`runInPane`/`subscribeLifecycle`/`getPane`/`snapshot`/`reportMetadata`, `CallerContext`
-(P1 herdr); `lensExtension(pi)` gate (P1/P2); the P2 roster/publisher, P3 viewer, P4 topology
-orchestrator, and P5 history surfaces under test. Observed bus field names per
-`phase-0-probe-report.md` (`progress.{toolCount,requests,tokens,cost,durationMs,resolvedModelIdentity}`,
-`lifecycle.{id,status,sessionFile,index,parentToolCallId}`).
+**Consumed (unchanged, names per locked P1):** `PROTOCOL_VERSION`, `WorkerStatus`,
+`WorkerSnapshot`, `Message`, `DecodeResult`, `encodeMessage`/`decodeMessage`,
+`ClientMessage`/`ClientDecodeResult`/`decodeClientMessage` (P1 protocol — the same boundary that
+rejects `control.*`, F-07); `isHerdrEnv`/`callerContext`/`createOverviewTab`/`splitPane`/`runInPane`/
+`subscribeLifecycle`/`getPane`/`snapshot`/`reportMetadata`, `CallerContext`, `LifecycleHandlers`
+(incl. `onEventsLost`), `PaneMetadata` (requires `source`), `Subscription`, `PaneInfo`,
+`SessionSnapshot` (P1 herdr); `resolveViewerCommand()` and the `lensExtension(pi)` gate (P1
+extension); the P2 roster/publisher (`RosterSignal` via `Roster.onSignal`,
+`BridgeHandle.socketPath`), P3 viewer (launched with env `LENS_SOCKET_PATH`/`LENS_SESSION`, plus
+`LENS_WORKER_ID` for worker-scoped mode — `LENS_SOCKET_PATH` is the **bridge** socket, never
+`CallerContext.socketPath`, F-01), P4 topology orchestrator, and P5 history surfaces under test.
+Observed bus field names per `phase-0-probe-report.md`: `task:subagent:progress` is an envelope
+`{index?,agent?,parentToolCallId?,…,progress:{id,status,toolCount,requests,tokens,cost,durationMs,
+resolvedModelIdentity}}` (F-02); `lifecycle.{id,status,sessionFile,index,parentToolCallId}`.
 
 **Produced (verification surface only — no production API):**
 
 ```ts
 // tests/harness/
-export interface IsolatedHerdrSession {  // named disposable session; never the daily workspace
+export interface IsolatedHerdrSession {  // named disposable session; wraps/reuses P4's helper (RC-6)
   sessionName: string;
   setup(): Promise<void>; teardown(): Promise<void>;
   assertDailyWorkspaceUntouched(): Promise<void>;
@@ -129,18 +174,21 @@ export async function sabotage(testId: string): Promise<boolean>;   // true iff 
 - **Untriggerable transitions:** `parked`/`aborted` may not be reproducible on 19.0.1 — recorded as
   known limitation, never faked (P6-R5).
 - **Guard evasion:** forbidden calls built dynamically could escape regex scans — mitigated by the
-  payload-construction review note in P6-R3 and socket-level capture in E2E.
+  `src/herdr` runtime transport denylist + review note in P6-R3 and socket-level capture in E2E.
 - **Daily-workspace contamination:** E2E asserts the daily workspace untouched before *and* after.
 - **Version drift between spec and gate:** pins re-verified at run time; drift → owner decision, not
   silent re-pin.
+- **Cross-workspace focus theft (F-14):** `tab.create` on 0.9.5 may yank focus across workspaces —
+  covered by the P6-R6 live step; if observed, FR-13 is scoped as a limitation, not silently passed.
 
 ## Open questions (settle before subplan)
 
-- Evidence report location/format: `docs/analysis/dod-v1-report.md` as a generated markdown table?
-  (recommend: yes, checked in).
+- Evidence report location/format: **resolved by RC-8** — `docs/analysis/dod-v1-report.md`,
+  generated markdown table, checked in (F-17).
+- Soak duration: **resolved by D5/F-18** — deterministic frame-volume run (≥50k frames + heap/line
+  assertion) replaces the ≥10-min wall-clock soak.
 - Is the E2E run scripted-and-rerunnable, witnessed live, or both? (recommend: scripted, owner
   spot-witnesses the focus-preservation step).
-- Soak duration for P6-R8 (≥10 min proposed — confirm bound).
 - Q-02 (license) must be closed for release — confirm MIT.
 
 ## Milestone (testable software at this gate)

@@ -117,3 +117,11 @@ found 18 valid issues. Canonical contracts updated in P1; phase specs P2–P6 al
 Persisted-session subagent JSONL path verified as `~/.omp/agent/sessions/<encoded-cwd>/<ts>_<session-id>/<id>.jsonl`
 (Phase 0's `$TMPDIR` path was an artifact of `--no-session`). `omp render <sessionFile>` exit 0 host-less;
 `omp read history://<id>` exit 1 host-less ("Unknown agent"). Recorded in `../../analysis/phase-0-probe-report.md`.
+
+### Activation wiring note (D2 soft coupling, flagged at spec review)
+
+D2 makes P4 depend on P5's `HistorySource.scan` (startup auto-open) while P5 lists P4 as a consumer —
+an apparent P4↔P5 cycle. It is resolved by the **extension activation path owning one `HistorySource`**
+and feeding both seams: P2 `startBridge opts.history` (the `() => WorkerSnapshot[]` callback) and P4
+`onHistoryPresent?()` (scan non-emptiness). Neither phase constructs the other's source; the activation
+path wires them. Subplans should keep that single ownership to avoid a real cycle.
