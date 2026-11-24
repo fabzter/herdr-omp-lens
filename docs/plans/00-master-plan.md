@@ -184,3 +184,24 @@ Q-P5-2 history transport is already ratified as RC-3 in `specs/00-reconciliation
 is fail-soft only. P2 acceptance now includes: confirm in interactive TUI mode; exercise
 idle/parked/aborted transitions. Risk R-01 downgraded to verified-with-caveat. Next: owner review of
 this plan + SDD, then P1 foundation spec.
+
+---
+
+## 12. Adversarial review outcome (2026-11-24)
+
+agy-hydrogen (Gemini 4 Hydrogen, High) reviewed the full v1 spec set and found **18 valid issues**
+(archived: `../analysis/review-agy-hydrogen-2026-11-24.md`). Core architecture judged sound. All fixes
+applied in one coordinated pass: canonical contracts in P1 + `specs/00-reconciliation.md` (RC-9..15),
+SDD §7–10 synced, phase specs P2–P6 aligned.
+
+- **Critical fixes:** F-01 bridge-vs-Herdr socket conflation; F-02 nested `progress` envelope; F-03
+  direct-only correlation via `before_subagent_spawn.spawnKey` (not a nonexistent hook `parentToolCallId`).
+- **Decisions adopted (owner may reshape at spec review):** D1 degraded-mode fallback relaxes live
+  FR-02/04/10; D2 auto-open overview on restart when history exists; D3 read-only `/lens split <id>`;
+  D4 thinking-visibility viewer toggle (default hidden); D5 runtime transport guards + deterministic
+  frame-volume test (no 10-min soak).
+- **New probe evidence (2026-11-24):** persisted subagent JSONL path verified
+  (`~/.omp/agent/sessions/<encoded-cwd>/<session-dir>/<id>.jsonl`); `omp render <sessionFile>` works
+  host-less; `omp read history://<id>` needs the owning session. Still open as P2 acceptance probes:
+  interactive-TUI frames, nested depth-2, idle/parked/aborted transitions.
+- **Next gate (owner):** review the corrected specs; pick license (Q-02); go → P1 code subplan.

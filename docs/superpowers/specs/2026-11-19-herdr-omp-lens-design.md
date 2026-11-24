@@ -145,57 +145,71 @@ Components (one responsibility each):
 
 ## 7. Bridge protocol (v1)
 
-NDJSON over a unix socket. Handshake: viewer sends `{v:1, role:"viewer", session:<id>}`; extension
-replies `{v:1, type:"hello", session, workers:[…]}` then streams deltas.
+NDJSON over a local unix socket (per-session, `0700` dir, unlinked on exit). Handshake: the viewer sends
+the client message `{v:1, role:"viewer", session:<id>}` (validated by `decodeClientMessage`); the extension
+replies `{v:1, type:"hello", session, workers:[…], history?:[…]}` then streams deltas. Canonical types live
+in P1 (`phase-01-foundation-spec.md`); this section mirrors them.
 
-Message types (observation-only):
+Server → client `Message` types (observation-only):
 
-- `hello` — initial roster snapshot.
-- `worker.upsert` — `{id, name, agent, status, model?, activity?, counters?, sessionFile?, updatedAt}`.
+- `hello` — `{session, workers: WorkerSnapshot[], history?: WorkerSnapshot[]}` (initial roster + persisted history).
+- `worker.upsert` — `{worker: WorkerSnapshot}` (wrapped, not flat).
 - `worker.removed` — `{id}`.
-- `transcript.ref` — `{id, sessionFile, artifactDir}` so the viewer can tail/render via the transcript
-  source (the bridge carries references + activity, not full transcript bytes, to stay bounded).
+- `transcript.ref` — `{id, sessionFile, artifactDir?}` (references + activity, not full transcript bytes).
 - `topology` — `{tabId?, paneIds:[…], state:"open"|"closed"}` (informational).
 - `notice` — `{level, message}` for fail-soft degradation.
 
-Reserved (v2, **not implemented in v1**): `control.*` namespace (`steer`, `follow_up`, `revive`,
-`cancel`) with an explicit confirmation handshake. v1 viewers must not send these; the extension
-ignores/rejects them (FR-11).
+`WorkerSnapshot` = `{id, name?, agent, status, model?, activity?, sessionFile?, counters?,
+parentToolCallId?, index?, modelRole?, thinkingLevel?, assignment?, historical?, updatedAt}`. `counters` map
+from the **nested** `task:subagent:progress.progress.{tokens,cost,requests,toolCount,durationMs}` (F-02).
+`historical:true` marks persisted/not-live entries (RC-3).
 
-> Exact field names are finalized after Phase 0 confirms native payload shapes (R-01). The protocol is
-> versioned so shape drift is a negotiated concern, not a crash.
+Client → server: only `ClientMessage` in v1. Reserved (v2, **not implemented**): `control.*` (`steer`,
+`follow_up`, `revive`, `cancel`) with a confirmation handshake; the boundary **rejects** them in v1 (FR-11).
+
+> Shapes are finalized from the Phase 0 observed payloads; the protocol is versioned (`PROTOCOL_VERSION=1`)
+> so shape drift is negotiated, not a crash.
 
 ## 8. Herdr topology lifecycle
 
-1. **Subscribe first.** Open one `events.subscribe` connection (session-wide `tab.closed`,
-   `pane.closed`, `pane.exited`, `pane.moved`, `workspace.closed`, `layout.updated`) **before** creating
-   the viewer (V-HDR-2/4).
-2. **Create additively.** `tab create --workspace $HERDR_WORKSPACE_ID --label "OMP subagents"
-   --no-focus`, then `pane run <root> "<viewer cmd>"`. Optional split via `pane split --no-focus`.
+1. **Subscribe first.** Open one `events.subscribe` connection (session-wide `tab.closed`, `pane.closed`,
+   `pane.exited`, `pane.moved`, `workspace.closed`, `layout.updated`) **before** creating the viewer (V-HDR-2/4).
+2. **Create additively via the JSON socket API.** `tab.create {workspace_id, label:"OMP subagents", focus:false,
+   env:{LENS_SOCKET_PATH:<bridge socket>, LENS_SESSION:<session id>}}`, then run the viewer in the root pane.
+   `LENS_SOCKET_PATH` is the **bridge** socket (`BridgeHandle.socketPath`), never Herdr's `CallerContext.socketPath`
+   (F-01). `env` is a socket-API field, not a CLI flag (F-11). Optional worker split via `pane.split {focus:false}`.
    Never `layout.apply` with `tab_id` (V-HDR-5).
-3. **Track liveness.** Match stored `tabId`/`paneId` against close events (either order = gone);
-   `pane.exited` distinguishes crash from user close; `pane.moved` updates the stored id. Always
-   reconcile via `pane.get`/`session.snapshot`; on `events_lost`, resubscribe + snapshot (V-HDR-3/4).
-4. **Reopen.** On the next native spawn after a close, recreate exactly one viewer (authoritative-read
-   dedupe). Manual close is respected until the next subtask (ratified #3).
-5. **Presentation.** Optionally `pane.report_metadata` for a friendly title/state label; never
-   `report_agent` (V-HDR-6/7).
+3. **Track liveness.** Match stored `tabId`/`paneId` against close events; on `tab.closed` confirm the stored
+   `paneId` is also absent in `snapshot()` before marking closed (handles the `pane.moved` race, F-10).
+   `pane.exited` distinguishes crash from close. P1 owns transparent `events_lost` resubscribe; P4 reconciles ids.
+   All state transitions are serialized behind a single-flight queue (F-10); viewer health is verified via the
+   bridge connection, not `pane.get` alone.
+4. **Reopen.** On the next native spawn after a close, recreate exactly one viewer (authoritative-read dedupe).
+   Manual close is respected until the next subtask (ratified #3). **Post-restart (D2):** auto-open the overview
+   on startup when non-empty history exists in Herdr, and reconnect/reuse a surviving tab to the new session socket.
+5. **Presentation.** `pane.report_metadata` (requires `source`) for a friendly title/state label; never
+   `report_agent` (V-HDR-6/7). Worker splits are triggered by a read-only `/lens split <id>` command (D3).
 
 ## 9. Transcript fidelity & history
 
-- Live activity/status from the native bus (R-01 bounded). Transcript bytes from the documented
-  artifact-tree JSONL (V-OMP-8) and `omp render` / `omp read history://<id>` (V-OMP-6/7) — the
-  production pipeline, host-less, no lease acquired.
+- Live activity/status from the native bus (R-01 bounded). Transcript rendering uses **`omp render <sessionFile>`**
+  (verified host-less, exit 0) over the documented artifact JSONL (V-OMP-8). `omp read history://<id>` requires the
+  owning live session (fails host-less) and is used only in-session (F-11). No lease acquired.
+- Thinking visibility is a **viewer toggle, default hidden** (D4); there is no documented OMP API to read it.
 - Finished workers collapse (FR-08); results render from `<id>.md` / JSONL.
-- After OMP restart, scan the persisted artifact tree (as Agent Hub does) and show saved history marked
-  **not live** (FR-09). Exact live counters are not reconstructable; label them as historical.
+- After OMP restart, scan the persisted artifact tree (`~/.omp/agent/sessions/<encoded-cwd>/<session-dir>/<id>.jsonl`,
+  verified) and show saved history marked **not live** (FR-09). Live counters are not reconstructable; label historical.
 
 ## 10. Error handling & safety invariants
 
-- Outside Herdr → no-op (FR-01). Bus absent/shape drift → degrade to artifact polling + `omp render`,
-  one `notice` (FR-12, R-01 fallback). Herdr/bridge failure → OMP turns unaffected (FR-12).
-- **Invariants (tamper-tested):** no duplicate workers; closing a view never cancels a worker; no focus
-  theft; no network relay; OMP sole owner of execution/results.
+- Outside Herdr → no-op (FR-01). Bus absent/shape drift → **degraded mode** (D1): discovery by scanning the current
+  session artifact dir, transcripts via `omp render`, one `notice`; live FR-02/04/10 promises (live discovery/counters)
+  are relaxed in degraded mode rather than over-promised. Herdr/bridge failure → OMP turns unaffected (FR-12).
+- All `pi.on`/`pi.events.on` handlers enqueue synchronously (fire-and-forget), never awaiting I/O (F-15). Herdr adapter
+  calls use per-call timeouts (2s connect / 5s RPC) and circuit-break to degraded. Bridge socket is per-session in a
+  `0700` dir, unlinked on close/SIGINT/SIGTERM (F-15).
+- **Invariants (tamper-tested):** no duplicate workers; closing a view never cancels a worker; no focus theft
+  (incl. cross-workspace, F-14); no network relay; OMP sole owner of execution/results.
 
 ## 11. Testing strategy
 

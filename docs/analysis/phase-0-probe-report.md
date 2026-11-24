@@ -101,8 +101,8 @@ carries the tool `result` (content + details). `agent_end` carries the full `mes
 2. **Only started/running/completed exercised.** `idle`, `parked`, `aborted` transitions (idle-TTL
    parking, abort/kill) were not triggered by a single quick task. P2 verifies them.
 3. **`detached:true`** appeared in print mode; TUI async spawns may differ. The frames still flow.
-4. **Thinking content is on the bus.** The viewer must mirror OMP's display settings for thinking
-   visibility rather than dumping raw thinking by default; prefer `omp render` for faithful rendering.
+4. **Thinking content is on the bus.** There is no documented OMP API to read thinking-visibility, so the
+   viewer uses its own toggle (default hidden, D4); prefer `omp render` for faithful rendering.
 5. Payload field names are now **observed**, not guessed; the bridge protocol (SDD §7) can be finalized
    against them. They remain undocumented upstream, so keep feature-detection + fail-soft (NFR-02).
 
@@ -112,3 +112,23 @@ The load-bearing risk is cleared: a parent-session extension can observe its dir
 workers live, with the full roster + transcript fidelity the owner asked for, using `pi.events.on` on
 the three documented channels. Proceed to P1/P2 with the bus as the primary observation source;
 artifact JSONL + `omp render` remain the history/fallback path.
+
+---
+
+## Follow-up probe (2026-11-24) — persisted paths & host-less CLI
+
+Run to ground review findings F-04 and F-11 (isolated temp cwd, **persisted session**, `HERDR_*` stripped):
+
+- **Persisted subagent JSONL path (F-04, resolves the `$TMPDIR` ambiguity):** with a real session,
+  `lifecycle.sessionFile` = `~/.omp/agent/sessions/<encoded-cwd>/<ts>_<session-id>/<worker-id>.jsonl`.
+  Phase 0's `/var/folders/…` path was solely an artifact of `--no-session`. The extension can discover
+  workers in degraded mode by scanning its own session's artifact dir (direct-only filter from JSONL headers).
+- **`omp render <sessionFile>` (F-11):** exit **0** host-less — renders the transcript. **Use this** for
+  host-less rendering.
+- **`omp read <sessionFile>`:** exit 0 (reads the JSONL).
+- **`omp read history://<id>` (F-11):** exit **1** host-less — `Unknown agent: <id>. Known agents: none`.
+  `history://` needs the owning **live session** registry; it is **not** a host-less fallback. Use it only
+  in-session.
+
+Still open (P2 acceptance probes): interactive-TUI frames, nested depth-2 correlation, and
+`idle`/`parked`/`aborted` transitions.

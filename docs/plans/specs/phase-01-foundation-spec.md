@@ -64,9 +64,12 @@ export interface WorkerSnapshot {
   id: string; name?: string; agent: string; status: WorkerStatus;
   model?: string; activity?: string; sessionFile?: string;
   counters?: { tokens?: number; cost?: number; requests?: number; toolCount?: number; durationMs?: number };
+  // F-06: lineage + model-role inspector fields (FR-07 / P3-R3), mapped by P2 from the bus.
+  parentToolCallId?: string; index?: number; modelRole?: string; thinkingLevel?: string; assignment?: string;
   historical?: boolean;   // P5: true for persisted / not-live entries (additive; PROTOCOL_VERSION stays 1)
   updatedAt: number;
 }
+// Server -> client messages.
 export type Message =
   | { v: 1; type: "hello"; session: string; workers: WorkerSnapshot[]; history?: WorkerSnapshot[] }
   | { v: 1; type: "worker.upsert"; worker: WorkerSnapshot }
@@ -77,12 +80,20 @@ export type Message =
 export type DecodeResult = { ok: true; message: Message } | { ok: false; error: string };
 export function encodeMessage(m: Message): string;           // one NDJSON line
 export function decodeMessage(line: string): DecodeResult;   // typed ok | error, never throws
+// F-07: client -> server handshake, validated at the same boundary; also rejects control.* (P1-R4 / FR-11).
+export type ClientMessage = { v: 1; role: "viewer"; session: string };
+export type ClientDecodeResult = { ok: true; message: ClientMessage } | { ok: false; error: string };
+export function decodeClientMessage(line: string): ClientDecodeResult;
 
 // src/herdr
+// F-01: socketPath here is HERDR's server socket ($HERDR_SOCKET_PATH). It is NOT the bridge socket.
 export interface CallerContext { workspaceId: string; tabId: string; paneId: string; binPath: string; socketPath: string }
 export function isHerdrEnv(env?: NodeJS.ProcessEnv): boolean;
 export function callerContext(env?: NodeJS.ProcessEnv): CallerContext | null;
-// Viewer env handoff (P4 sets, P3 reads): LENS_SOCKET_PATH=<bridge socket>, LENS_SESSION=<session id>.
+// Viewer env handoff (P4 sets, P3 reads): LENS_SOCKET_PATH=<BRIDGE socket = BridgeHandle.socketPath>,
+// LENS_SESSION=<OMP session id>. Never use CallerContext.socketPath for LENS_SOCKET_PATH (F-01).
+// F-11: tab.create/pane.split env is a raw socket-API field; src/herdr uses the JSON socket protocol,
+// not a CLI --env flag.
 export function createOverviewTab(c: CallerContext, label: string, env?: Record<string, string>): Promise<{ tabId: string; rootPaneId: string }>;
 export function splitPane(c: CallerContext, targetPaneId: string, dir: "right" | "down", env?: Record<string, string>): Promise<{ paneId: string }>;
 export function runInPane(c: CallerContext, paneId: string, command: string): Promise<void>;
@@ -93,12 +104,13 @@ export interface LifecycleHandlers {
   onPaneMoved?(e: { previousPaneId: string; previousWorkspaceId: string; previousTabId: string; pane: PaneInfo }): void;
   onWorkspaceClosed?(e: { workspaceId: string }): void;
   onLayoutUpdated?(e: { tabId: string }): void;
-  onEventsLost?(): void;   // resubscribe + session.snapshot reconcile
+  onEventsLost?(): void;   // F-12: P1 auto-resubscribes + waits subscription_started; this hook lets P4 reconcile ids
 }
 export interface Subscription { close(): Promise<void>; }
 export interface PaneInfo { paneId: string; tabId: string; workspaceId: string; title?: string; agent?: string }
 export interface SessionSnapshot { workspaces: unknown[]; tabs: unknown[]; panes: PaneInfo[] }
-export interface PaneMetadata { title?: string; displayAgent?: string; stateLabels?: Record<string, string>; seq?: number; ttlMs?: number }
+// F-12: source is required by pane.report_metadata (V-HDR-7); tokens optional.
+export interface PaneMetadata { source: string; title?: string; displayAgent?: string; stateLabels?: Record<string, string>; tokens?: Record<string, string>; seq?: number; ttlMs?: number }
 export function subscribeLifecycle(c: CallerContext, handlers: LifecycleHandlers): Promise<Subscription>;
 export function getPane(c: CallerContext, paneId: string): Promise<PaneInfo | null>;
 export function snapshot(c: CallerContext): Promise<SessionSnapshot>;
@@ -106,18 +118,30 @@ export function reportMetadata(c: CallerContext, paneId: string, meta: PaneMetad
 
 // src/extension
 export default function lensExtension(pi: ExtensionAPI): void;  // registers gate; no-op outside Herdr
+// F-16: resolve the viewer invocation against the installed package root (import.meta.dirname / package bin),
+// never the session cwd, so clean-profile FR-15 works in any working directory.
+export function resolveViewerCommand(): string;
 ```
 
-Field names align with the **observed** Phase 0 payloads (`phase-0-probe-report.md`); the roster
-`counters` map directly from `task:subagent:progress`. Validation uses a schema parser at the boundary
-(Zod v4) per the project style rules; types above are the named output, not raw `unknown`.
+Field names align with the **observed** Phase 0 payloads (`phase-0-probe-report.md`). F-02: the roster
+`counters` map from the **nested** `task:subagent:progress.progress.{tokens,cost,requests,toolCount,durationMs}`
+(P2 models the envelope, not a flat object). Validation uses a schema parser at the boundary (Zod v4) per
+the project style rules; types above are the named output, not raw `unknown`.
 
 **Cross-spec contracts (ratified in `00-reconciliation.md`):** `WorkerSnapshot.historical?` and
 `hello.history?` are the P5 history transport (additive, v1 stays 1); P2's publisher and P3's viewer
-tolerate them. The viewer receives `LENS_SOCKET_PATH` + `LENS_SESSION` via the `env` argument (P4 sets,
-P3 reads). `LifecycleHandlers` is the concrete shape P4 consumes. The isolated-named-session helper is
-stubbed here, **implemented and owned by P4**, and reused by P6's E2E. `reportMetadata` is the adapter
-primitive; orchestration of it is P4-driven.
+handle them. The viewer receives `LENS_SOCKET_PATH` (= **bridge** socket, `BridgeHandle.socketPath`) +
+`LENS_SESSION` via the `env` argument (P4 sets, P3 reads) — **not** `CallerContext.socketPath` (F-01).
+Roster signals use `Roster.onSignal(cb)` emitting `worker.spawned`/`worker.finished`/`roster.empty` (F-05).
+`LifecycleHandlers` is the concrete shape P4 consumes; P1 owns transparent `events_lost` resubscribe (F-12).
+The isolated-named-session helper is stubbed here, **implemented and owned by P4**, reused by P6's E2E.
+`reportMetadata` is the adapter primitive (requires `source`); orchestration is P4-driven.
+
+**Hardening (F-15/F-16):** all `pi.on`/`pi.events.on` handlers enqueue synchronously (fire-and-forget) and
+never await I/O, so an OMP turn is never blocked (FR-12). The bridge binds a per-session socket inside a
+`0700` directory (unique per OMP session/PID), unlinked on `BridgeHandle.close()`/SIGINT/SIGTERM. Herdr
+adapter calls use explicit per-call timeouts (e.g. 2s connect / 5s RPC) and circuit-break to `degraded`.
+`resolveViewerCommand()` resolves against the package root for clean-profile installs.
 
 ## Risks
 
