@@ -50,4 +50,10 @@ export default function lensExtension(pi: LensExtensionApi, deps?: LensExtension
 			// Read-only placeholder: intentionally does nothing until P4.
 		},
 	});
+
+	const start = deps?.startObservation ?? startObservation;
+	const onError = deps?.onObservationError ?? defaultObservationErrorSink;
+	void start(pi, ctx, deps).then((obs) => {
+		active = obs;
+	}, onError);
 }
