@@ -422,33 +422,34 @@ async function paneTypeCommand(paneId: string, text: string): Promise<void> {
 	await paneSendKeys(paneId, ["enter"]);
 }
 
-/** Submit text without --wait (slash commands never produce a working state). */
-async function agentSubmit(name: string, text: string): Promise<void> {
-	const proc = Bun.spawn(["herdr", "agent", "prompt", name, text], {
-		stdout: "pipe",
-		stderr: "pipe",
-	});
+/** Spawn `herdr <args>` bounded by a SIGKILL timer — same policy as herdrJson,
+ *  for raw-output commands (prompt w/o --wait, send-keys). A stalled herdr can
+ *  never hang teardown (F1). */
+async function herdrProc(args: string[], label: string, timeoutMs = T.cliMs): Promise<void> {
+	const proc = Bun.spawn(["herdr", ...args], { stdout: "pipe", stderr: "pipe" });
+	const timer = setTimeout(() => {
+		try {
+			proc.kill("SIGKILL");
+		} catch {
+			// already dead
+		}
+	}, timeoutMs);
 	const [code, out, err] = await Promise.all([
 		proc.exited,
 		new Response(proc.stdout).text(),
 		new Response(proc.stderr).text(),
 	]);
-	if (code !== 0)
-		throw new Error(`agent prompt ${name} → exit ${code}: ${(err || out).slice(0, 300)}`);
+	clearTimeout(timer);
+	if (code !== 0) throw new Error(`${label} → exit ${code}: ${(err || out).slice(0, 300)}`);
+}
+
+/** Submit text without --wait (slash commands never produce a working state). */
+async function agentSubmit(name: string, text: string): Promise<void> {
+	await herdrProc(["agent", "prompt", name, text], `agent prompt ${name}`);
 }
 
 async function paneSendKeys(paneId: string, keys: string[]): Promise<void> {
-	const proc = Bun.spawn(["herdr", "pane", "send-keys", paneId, ...keys], {
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	const [code, out, err] = await Promise.all([
-		proc.exited,
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
-	]);
-	if (code !== 0)
-		throw new Error(`pane send-keys ${paneId} → exit ${code}: ${(err || out).slice(0, 300)}`);
+	await herdrProc(["pane", "send-keys", paneId, ...keys], `pane send-keys ${paneId}`);
 }
 
 interface Occupant {
@@ -905,7 +906,7 @@ async function stepSetupAndSpawn(before: Enumerate): Promise<void> {
 		);
 	}
 	const collapsed = await collapsePoll
-		.then((r) => r.v)
+		.then((r) => ({ ...r.v, witnessed: true as const }))
 		.catch(async () => {
 			// The transient window was missed — the finished worker is removed
 			// by design (roster finished→worker.removed). Workers (0) IS the
@@ -918,34 +919,49 @@ async function stepSetupAndSpawn(before: Enumerate): Promise<void> {
 					"collapse window missed AND roster not empty — worker never finished",
 				);
 			}
-			note(
-				step,
-				"finished-collapse (FR-08)",
-				"transient upsert→removed window not captured; steady state workers(0) — collapse covered by unit tests",
-			);
-			return { text, n: "transient" };
+			return { text, n: "transient", witnessed: false as const };
 		});
-	pass(step, "finished-collapse", `finished (${collapsed.n}) — press e to expand`);
+	if (collapsed.witnessed) {
+		pass(step, "finished-collapse", `finished (${collapsed.n}) — press e to expand`);
+	} else {
+		// F3: workers(0) proves reaping, NOT that the collapse UI rendered —
+		// record manual evidence so a green run never implies it was witnessed.
+		record(
+			step,
+			"finished-collapse",
+			"manual",
+			"collapse window missed — workers(0) proves the worker reaped, but 'finished (N) — press e to expand' was NOT witnessed live (unit-covered; rerun RUN_E2E_LIVE=1)",
+		);
+	}
 	collectWorkerIds(step);
 	// Artifact cross-check: a terminal session_exit marker must land in the
 	// worker JSONL — it is exactly what the restart history scan reads (P5-R4).
-	const file1 = st.sessionFile1 as string;
-	const marked = await waitFor(
-		"worker session_exit marker on disk",
-		async () => {
-			const { ids } = workersInSession(file1);
-			return ids.some((id) => workerFinished(file1, id)) ? ids : undefined;
-		},
-		T.finishedMs,
-	).catch(() => undefined);
-	if (marked === undefined) {
-		note(
+	if (st.sessionFile1 === undefined) {
+		record(
 			step,
 			"worker session_exit marker",
-			"no marker yet — restart history may map the worker as aborted; continuing",
+			"skipped",
+			"no session file (agent_session undefined at agent_started)",
 		);
 	} else {
-		pass(step, "worker session_exit on disk", `${marked.length} worker file(s), marker present`);
+		const file1 = st.sessionFile1;
+		const marked = await waitFor(
+			"worker session_exit marker on disk",
+			async () => {
+				const { ids } = workersInSession(file1);
+				return ids.some((id) => workerFinished(file1, id)) ? ids : undefined;
+			},
+			T.finishedMs,
+		).catch(() => undefined);
+		if (marked === undefined) {
+			note(
+				step,
+				"worker session_exit marker",
+				"no marker yet — restart history may map the worker as aborted; continuing",
+			);
+		} else {
+			pass(step, "worker session_exit on disk", `${marked.length} worker file(s), marker present`);
+		}
 	}
 }
 /**
@@ -1234,19 +1250,20 @@ async function stepRestart(): Promise<void> {
 	const sameTab = overview2.tabId === priorTabId;
 	const samePane = overview2.paneId === priorPaneId;
 	if (!sameTab) {
-		note(
+		throw fail(
 			step,
-			"surviving tab reused",
-			`overview tab id changed ${priorTabId} → ${overview2.tabId} (new create, not rebind)`,
+			"surviving tab reused (D2 rebind)",
+			`overview tab changed ${priorTabId} → ${overview2.tabId} — D2 requires reusing the surviving tab, not a recreate`,
 		);
 	}
-	pass(
-		step,
-		"surviving tab reused (D2 rebind)",
-		sameTab && samePane
-			? `same tab ${priorTabId} + pane ${priorPaneId} rebound`
-			: `tab ${overview2.tabId} pane ${overview2.paneId} (${sameTab ? "same tab" : "recreated"})`,
-	);
+	if (!samePane) {
+		note(
+			step,
+			"surviving viewer pane",
+			`same tab ${priorTabId} but viewer pane changed ${priorPaneId} → ${overview2.paneId} — reconnect proven by socket check below`,
+		);
+	}
+	pass(step, "surviving tab reused (D2 rebind)", `same tab ${priorTabId} rebound`);
 	st.overviewTabId = overview2.tabId;
 	st.overviewPaneId = overview2.paneId;
 	await assertViewerNotAgent(step, overview2.tabId);

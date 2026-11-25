@@ -83,3 +83,22 @@ inside a Herdr pane. s4 uses the LOCAL build automatically:
   no payload — recorded as `?` kind).
 - **U-HDR-5 (lifecycle event ordering):** same capture path; insufficient frames live.
 - **U-HDR-4:** see `progress.md` — addressed in earlier phases' live probes.
+
+## Fix round 1 (2026-11-25, review F1–F4)
+
+- **F1 bounded teardown:** `agentSubmit`/`paneSendKeys` now route through `herdrProc`
+  (SIGKILL after `T.cliMs`, same policy as `herdrJson`). A stalled herdr can no longer
+  hang teardown before `assertDailyUntouched`.
+- **F2 D2 enforced:** `!sameTab` post-restart now `throw fail("surviving tab reused (D2
+  rebind)")` — a close+recreate regression fails instead of passing via note.
+  `sameTab && !samePane` (viewer rebind inside the surviving tab) is a `note` —
+  reconnect is still proven by the `[connected] + new session id` check.
+- **F3 honest collapse label:** the workers(0) fallback now records
+  `manual "finished-collapse"` ("…NOT witnessed live (unit-covered)") — a green run
+  never implies the transient collapse UI was seen. The real collapse still `pass`es
+  when observed.
+- **F4 marker wait guarded:** `st.sessionFile1 === undefined` → `skipped` instead of
+  polling 180 s for a marker that cannot exist.
+
+Verification after fixes: `tsc --noEmit` clean; `biome check` 66 files clean;
+`bun test` 460 pass / 0 fail; safe run exit 0 (`w0` round-trip, 13/19/21 unchanged).
