@@ -102,3 +102,45 @@ inside a Herdr pane. s4 uses the LOCAL build automatically:
 
 Verification after fixes: `tsc --noEmit` clean; `biome check` 66 files clean;
 `bun test` 460 pass / 0 fail; safe run exit 0 (`w0` round-trip, 13/19/21 unchanged).
+
+## Run C — session-bind fix (`RUN_E2E_LIVE=1`, 2026-11-25 ~10:25 UTC)
+
+Harness change under test: `pollBoundSession()` — after `agent_started`, when
+`agent_session` is undefined the driver now polls `herdr agent list` (matched by
+`pane_id`, 40 s bound) for the bound session path. Wired at both bind sites
+(s1 launch, s4 restart; restart excludes the prior session file so a stale bind
+cannot be picked up). If the session still never binds, the step records
+`manual`, never a silent skip. On auto-open failure the shell-pane tail is now
+captured to `evidence/s1-shell-tail.txt` for dropped-prompt diagnosis.
+
+Result: **22 pass / 0 fail / 5 manual / 0 skipped** in ~910 s, exit 0.
+
+```
+[PASS] s1 :: omp launched (installed build) — agent=lense2e5299z
+        session=01a2123d-a2a0-7345-9802-56526fc37896 file=~/.omp/agent/sessions/-tmp-lens-e2e-…-299Z-78488/…_01a2123d-….jsonl
+[PASS] s1 :: auto-open on first spawn — tab w16:t2 pane w16:p3
+[PASS] s1 :: viewer connected, live worker listed — [connected] + workers (>=1)
+[MANUAL] s1 :: finished-collapse — transient window missed; workers(0) proves reaped (unit-covered)
+[PASS] s2 :: manual close honored; worker survives close (FR-14); exactly-one reopen (FR-05); no focus theft; U-HDR-1
+[MANUAL] s3 :: read-only /lens split — herdr pane get JSON Parse error (Unexpected EOF)
+[PASS] s4 :: omp exited; restarted (local build, same cwd); surviving tab reused (D2 rebind); U-HDR-1
+[MANUAL] s4 :: session bind after restart — agent_session never bound after agent_started + 40 s agent-list poll
+[MANUAL] s4 :: OMP restart → history auto-open — viewer reconnected to new socket timed out (30 s ×2; session=undefined)
+[MANUAL] s5 :: cross-workspace focus preservation — spawn lands timed out (150 s ×2)
+[PASS] teardown :: disposable workspace closed + gone — w16
+[PASS] s6 :: daily workspace untouched — 13 workspaces, 19 tabs, 21 panes — identical before/after
+```
+
+Findings:
+
+- The s1 race is FIXED: `sessionFile1` bound to a real jsonl (Run B's
+  `session=undefined` → `session=01a2123d-…`), and the whole downstream chain
+  (auto-open, viewer connect, worker roster, s2 reopen, FR-05/14, U-HDR-1,
+  focus preservation) passed live.
+- New evidence: the RESTARTED local-build (`-e`) agent showed `idle` in
+  `agent list` but `agent_session` stayed `None` even past the 40 s bound —
+  a distinct bind gap from the interactive_ready race. Recorded as manual;
+  the harness now isolates it instead of cascading skips.
+- s5's spawn-lands timeout correlates with the unbound restarted session —
+  likely same root cause, not a separate flake. Honest manual, retry-once
+  respected, run stopped per the bounded-live mandate.

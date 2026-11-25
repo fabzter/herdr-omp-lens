@@ -85,6 +85,7 @@ const T = {
 	cliMs: 30_000,
 	agentStartMs: 90_000,
 	promptMs: 300_000,
+	bindMs: 40_000,
 	stallMs: 200_000,
 	tabOpenMs: 150_000,
 	viewerConnectMs: 30_000,
@@ -373,6 +374,26 @@ async function waitForRetry<V>(
 		note("retry", desc, `first attempt failed (${String(err).slice(0, 160)}); retrying once`);
 		return await waitFor(desc, fn, timeoutMs);
 	}
+}
+
+/**
+ * `agent_started` often returns `agent_session` undefined — the TUI session
+ * binds slightly after interactive_ready. `agent list` reliably carries the
+ * bound path once the agent settles, so poll it until the session is a
+ * non-empty string. `exclude` guards the restart leg against reading the
+ * stale pre-restart bind while the new agent still spins up.
+ */
+async function pollBoundSession(paneId: string, exclude?: string): Promise<string> {
+	return waitFor(
+		`agent session bound (agent list) for pane ${paneId}`,
+		async () => {
+			const agents = agentListSchema.parse(await herdrJson(["agent", "list"]));
+			const a = agents.agents.find((x) => x.pane_id === paneId);
+			const value = a?.agent_session?.value;
+			return value !== undefined && value !== "" && value !== exclude ? value : undefined;
+		},
+		T.bindMs,
+	);
 }
 
 /** Fire an `agent prompt --wait` as a background process (turns take minutes). */
@@ -828,8 +849,18 @@ async function stepSetupAndSpawn(before: Enumerate): Promise<void> {
 			}
 		}
 	})();
-	st.sessionFile1 = started.agent.agent_session?.value;
+	st.sessionFile1 =
+		started.agent.agent_session?.value ??
+		(await pollBoundSession(st.shellPaneId as string).catch(() => undefined));
 	st.sessionId1 = st.sessionFile1 === undefined ? undefined : sessionIdFromFile(st.sessionFile1);
+	if (st.sessionFile1 === undefined) {
+		record(
+			step,
+			"session bind",
+			"manual",
+			"agent_session never bound after agent_started + bounded agent-list poll (env-coupled)",
+		);
+	}
 	pass(
 		step,
 		"omp launched (installed build)",
@@ -858,7 +889,18 @@ async function stepSetupAndSpawn(before: Enumerate): Promise<void> {
 		"overview tab auto-open on first spawn",
 		async () => findOverview(st.workspaceId as string),
 		T.tabOpenMs,
-	);
+	).catch(async (err: unknown) => {
+		// Diagnosability: if the prompt was silently dropped during init, the
+		// shell pane tail is the only evidence — capture it, do not fake a pass.
+		const tail = await paneRead(st.shellPaneId as string).catch(() => "");
+		note(
+			step,
+			"auto-open wait failed — shell pane tail",
+			tail.trim() === "" ? "pane read returned no output" : tail.split("\n").slice(-20).join(" | "),
+		);
+		writeFileSync(join(EVIDENCE_DIR, "s1-shell-tail.txt"), tail);
+		throw err;
+	});
 	st.overviewTabId = overview.tabId;
 	st.overviewPaneId = overview.paneId;
 	pass(step, "auto-open on first spawn", `tab ${overview.tabId} pane ${overview.paneId}`);
@@ -941,7 +983,7 @@ async function stepSetupAndSpawn(before: Enumerate): Promise<void> {
 			step,
 			"worker session_exit marker",
 			"skipped",
-			"no session file (agent_session undefined at agent_started)",
+			"no session file (agent_session still unbound after agent_started + agent-list poll)",
 		);
 	} else {
 		const file1 = st.sessionFile1;
@@ -1221,8 +1263,18 @@ async function stepRestart(): Promise<void> {
 		});
 	}
 	st.agentName = started2.agent.name;
-	st.sessionFile2 = started2.agent.agent_session?.value;
+	st.sessionFile2 =
+		started2.agent.agent_session?.value ??
+		(await pollBoundSession(st.shellPaneId as string, st.sessionFile1).catch(() => undefined));
 	st.sessionId2 = st.sessionFile2 === undefined ? undefined : sessionIdFromFile(st.sessionFile2);
+	if (st.sessionFile2 === undefined) {
+		record(
+			step,
+			"session bind after restart",
+			"manual",
+			"agent_session never bound after agent_started + bounded agent-list poll (env-coupled)",
+		);
+	}
 	pass(
 		step,
 		"omp restarted (local build, same cwd)",
