@@ -468,6 +468,10 @@ const REQS: Requirement[] = [
 
 			{
 				file: "tests/guards/invariants.test.ts",
+				name: "(a) FR-14: closing the overview and a split never removes the worker",
+			},
+			{
+				file: "tests/guards/invariants.test.ts",
 				name: "(b) FR-14: open/split/close/reopen never spawns a duplicate worker",
 			},
 			{
