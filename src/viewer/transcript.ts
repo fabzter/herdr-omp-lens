@@ -64,7 +64,7 @@ const DEFAULT_RENDER_MAX_BYTES = 1024 * 1024;
 const DEFAULT_TAIL_MAX_BYTES = 256 * 1024;
 const DEFAULT_TAIL_MAX_LINES = 500;
 const TRUNCATION_MARKER = "\n… [output truncated]";
-
+const STDERR_MAX_BYTES = 64 * 1024;
 /**
  * `omp render` argv. Host-less: a session FILE path, never a registry URI
  * (those are only reachable from the owning live session, RC-15).
@@ -184,33 +184,39 @@ export async function renderWorkerTranscript(
 
 	// D4: thinking hidden by default → render a filtered temp copy so the
 	// renderer never sees thinking content (it has no --thinking flag).
+	// The temp dir lives inside the same try/finally as the spawn: any throw
+	// between mkdtempSync and the write (OOM on the filtered join, a failing
+	// Bun.write) must still remove it instead of leaking it in $TMPDIR.
 	let renderPath = sessionFile;
 	let tmpDir: string | null = null;
-	if (!thinking) {
-		const source = await Bun.file(sessionFile).text();
-		if (source.includes('"thinking"')) {
-			tmpDir = mkdtempSync(join(tmpdir(), "lens-render-"));
-			renderPath = join(tmpDir, "filtered.jsonl");
-			const filtered = filterThinkingLines(source.split("\n")).join("\n");
-			await Bun.write(renderPath, filtered.endsWith("\n") ? filtered : `${filtered}\n`);
-		}
-	}
-
 	try {
+		if (!thinking) {
+			const source = await Bun.file(sessionFile).text();
+			if (source.includes('"thinking"')) {
+				tmpDir = mkdtempSync(join(tmpdir(), "lens-render-"));
+				renderPath = join(tmpDir, "filtered.jsonl");
+				const filtered = filterThinkingLines(source.split("\n")).join("\n");
+				await Bun.write(renderPath, filtered.endsWith("\n") ? filtered : `${filtered}\n`);
+			}
+		}
+
 		const proc = await spawn(
 			buildRenderArgv(opts.ompBin ?? "omp", renderPath, { plain: opts.plain }),
 		);
 		const [out, err] = await Promise.all([
 			collectStream(proc.stdout, maxBytes, () => proc.kill()),
-			new Response(proc.stderr).text(),
+			// stderr is only a 500B tail on the error path — bound the buffer so
+			// a chatty renderer can't pin unbounded memory (drain, don't kill).
+			collectStream(proc.stderr, STDERR_MAX_BYTES, () => {}),
 		]);
 		const code = await proc.exited;
 		const text = new TextDecoder().decode(out.bytes);
+		const errText = new TextDecoder().decode(err.bytes);
 		if (out.capped) {
 			return `${lastCompleteLines(text)}${TRUNCATION_MARKER}`;
 		}
 		if (code !== 0) {
-			throw new Error(`omp render exited ${code}: ${err.trim().slice(-500)}`);
+			throw new Error(`omp render exited ${code}: ${errText.trim().slice(-500)}`);
 		}
 		return text;
 	} finally {

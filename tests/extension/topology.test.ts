@@ -494,4 +494,61 @@ describe("topology manager — review-fix regressions", () => {
 		await Promise.all([spawned, stopping]);
 		expect(m.closedSubs).toBe(1);
 	});
+
+	test("final F2: overview pane.exited marks the view dead; next spawn relaunches in the same pane", async () => {
+		const m = mockAdapter();
+		const { manager, messages } = make({ adapter: m.adapter });
+		await manager.onWorkerSpawned();
+		expect(m.count("runInPane")).toBe(1);
+		// viewer process dies; the pane itself survives in Herdr
+		m.handlers.onPaneExited?.({ workspaceId: CTX.workspaceId, paneId: "pane-1" });
+		await settle(manager);
+		expect(messages.some((msg) => msg.type === "notice")).toBe(true);
+		expect(manager.state()).toBe("closed"); // not stuck "open" on a dead viewer
+		// next spawn relaunches into the surviving pane with refreshed env (no second tab)
+		await manager.onWorkerSpawned();
+		expect(m.count("createOverviewTab")).toBe(1);
+		const relaunch = m.calls
+			.slice()
+			.reverse()
+			.find((c) => c.method === "runInPane" && c.args[0] === "pane-1");
+		expect(relaunch).toBeDefined();
+		expect(String(relaunch?.args[1])).toContain("LENS_SOCKET_PATH=");
+		expect(String(relaunch?.args[1])).toContain(VIEWER_CMD);
+		expect(manager.state()).toBe("open");
+		await manager.stop();
+	});
+
+	test("final F6: a split-titled pane is not adopted as the overview survivor", async () => {
+		const m = mockAdapter();
+		// "OMP subagents · w-1" — a worker split (or user pane) whose title merely
+		// CONTAINS the overview label must not be adopted as the overview.
+		m.panes.set("stray", {
+			paneId: "stray",
+			tabId: "stray-tab",
+			workspaceId: CTX.workspaceId,
+			title: `${OVERVIEW_TAB_LABEL} · w-1`,
+		});
+		const { manager } = make({ adapter: m.adapter });
+		await manager.onWorkerSpawned();
+		expect(m.count("createOverviewTab")).toBe(1); // creates its own tab
+		expect(m.calls.some((c) => c.method === "runInPane" && c.args[0] === "stray")).toBe(false);
+		expect(manager.state()).toBe("open");
+		await manager.stop();
+	});
+
+	test("final F6: an exact-title survivor is still adopted (positive control)", async () => {
+		const m = mockAdapter();
+		m.panes.set("old-pane", {
+			paneId: "old-pane",
+			tabId: "old-tab",
+			workspaceId: CTX.workspaceId,
+			title: OVERVIEW_TAB_LABEL,
+		});
+		const { manager } = make({ adapter: m.adapter });
+		await manager.onWorkerSpawned();
+		expect(m.count("createOverviewTab")).toBe(0);
+		expect(m.calls.some((c) => c.method === "runInPane" && c.args[0] === "old-pane")).toBe(true);
+		await manager.stop();
+	});
 });

@@ -63,7 +63,7 @@ const FINISHED: Record<string, true> = { completed: true, failed: true, aborted:
 
 /** FR-08 collapse partition: renderer uses this; the reducer only keeps the flag. */
 export function isFinishedStatus(status: WorkerStatus): boolean {
-	return status in FINISHED;
+	return Object.hasOwn(FINISHED, status);
 }
 
 export function initialViewerState(init?: Partial<ViewerState>): ViewerState {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -212,6 +212,49 @@ describe("renderWorkerTranscript", () => {
 			maxBytes: 1_000_000,
 		});
 		expect(shown).toContain("SECRET_THINKING_TOKEN");
+	});
+});
+
+describe("renderWorkerTranscript — resource bounds", () => {
+	test("cleans up the temp filtered-copy dir when the filtered write throws", async () => {
+		const file = tmpPath("w");
+		writeJsonl(file, sessionRows()); // contains "thinking" → filtered-copy path
+		const dirsBefore = readdirSync(tmpdir()).filter((d) => d.startsWith("lens-render-"));
+		const realWrite = Bun.write;
+		Bun.write = () => Promise.reject(new Error("disk full"));
+		try {
+			await expect(renderWorkerTranscript(file, { spawn: fakeSpawn("", 0, []) })).rejects.toThrow(
+				"disk full",
+			);
+		} finally {
+			Bun.write = realWrite;
+		}
+		const dirsAfter = readdirSync(tmpdir()).filter((d) => d.startsWith("lens-render-"));
+		expect(dirsAfter).toEqual(dirsBefore);
+	});
+
+	test("stderr is capped: only a bounded tail reaches the error", async () => {
+		const file = tmpPath("w");
+		writeJsonl(file, sessionRows());
+		let killed = false;
+		const huge = "e".repeat(256 * 1024);
+		const spawn = (): FakeProc => ({
+			stdout: streamOf(""),
+			stderr: streamOf(huge),
+			exited: Promise.resolve(3),
+			kill: () => {
+				killed = true;
+			},
+		});
+		const err = await renderWorkerTranscript(file, { thinking: true, spawn }).catch(
+			(e: unknown) => e,
+		);
+		expect(err).toBeInstanceOf(Error);
+		const msg = (err as Error).message;
+		// entire 256KiB stderr must NOT be buffered into the message
+		expect(msg.length).toBeLessThan(64 * 1024);
+		expect(msg).toContain("e".repeat(100)); // bounded tail still attached
+		expect(killed).toBe(false); // stderr cap drains instead of killing the render
 	});
 });
 

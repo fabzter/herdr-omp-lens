@@ -318,11 +318,11 @@ export function createTopologyManager(
 		// close-before-subscribe race and a surviving pane from a previous
 		// session (D2 rebind), which gets a fresh viewer + env, never a second tab.
 		const snap = await adapter.snapshot();
+		// Exact title only: worker splits are titled
+		// `${OVERVIEW_TAB_LABEL} · <id>` and user panes may merely contain the
+		// label — adopting either would hijack a pane we don't own.
 		const survivor = snap.panes.find(
-			(p) =>
-				p.workspaceId === ctx.workspaceId &&
-				p.title !== undefined &&
-				p.title.includes(OVERVIEW_TAB_LABEL),
+			(p) => p.workspaceId === ctx.workspaceId && p.title === OVERVIEW_TAB_LABEL,
 		);
 		if (survivor !== undefined) {
 			overview = { tabId: survivor.tabId, paneId: survivor.paneId };
@@ -399,7 +399,16 @@ export function createTopologyManager(
 		const isOverview = overview !== null && overview.paneId === paneId;
 		const isSplit = [...splits.values()].includes(paneId);
 		if (!isOverview && !isSplit) return;
-		// U-HDR-3/Q-P4-2: viewer process crash → notice only, no auto-relaunch.
+		// U-HDR-3/Q-P4-2: viewer process crash → notice, and mark the view dead
+		// so the next spawn relaunches. The pane itself survives, so the
+		// survivor-rebind path reuses it with refreshed LENS_* env. Splits keep
+		// their binding — openWorkerSplit's viewerCount check relaunches on
+		// demand into the same pane.
+		if (isOverview) {
+			overview = null;
+			state = "closed";
+			emitTopology("closed");
+		}
 		notice(
 			"warn",
 			`viewer process exited in pane ${paneId}; view stays closed until the next spawn`,

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Message, WorkerSnapshot } from "../../src/protocol/types";
+import type { Message, WorkerSnapshot, WorkerStatus } from "../../src/protocol/types";
 import { applyMessage, initialViewerState, isFinishedStatus } from "../../src/viewer/state";
 
 function snap(id: string, over: Partial<WorkerSnapshot> = {}): WorkerSnapshot {
@@ -290,5 +290,19 @@ describe("isFinishedStatus", () => {
 		expect(isFinishedStatus("queued")).toBe(false);
 		expect(isFinishedStatus("idle")).toBe(false);
 		expect(isFinishedStatus("parked")).toBe(false);
+	});
+
+	test("prototype-chain members are NOT finished (own-property check)", () => {
+		// `status in FINISHED` would return true via Object.prototype.
+		for (const inherited of [
+			"toString",
+			"hasOwnProperty",
+			"constructor",
+			"valueOf",
+			"isPrototypeOf",
+		]) {
+			expect(isFinishedStatus(inherited as WorkerStatus)).toBe(false);
+		}
+		expect(isFinishedStatus("completed")).toBe(true);
 	});
 });

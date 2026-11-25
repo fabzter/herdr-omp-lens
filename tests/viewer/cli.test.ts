@@ -81,9 +81,11 @@ describe("resolveViewerConfig — argv/env worker scope (D3)", () => {
 });
 
 describe("entry wiring (F-16)", () => {
-	test("resolveViewerCommand resolves to the real cli.ts", () => {
-		expect(existsSync(resolveViewerCommand())).toBe(true);
-		expect(resolveViewerCommand().endsWith("cli.ts")).toBe(true);
+	test("resolveViewerCommand resolves to the real cli.ts behind a runnable `bun` word", () => {
+		const command = resolveViewerCommand();
+		expect(command.startsWith("bun ")).toBe(true);
+		expect(command.endsWith("cli.ts")).toBe(true);
+		expect(existsSync(command.slice(4))).toBe(true);
 	});
 });
 

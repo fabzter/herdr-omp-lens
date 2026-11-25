@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { resolveViewerCommand } from "../../src/extension/resolve";
 import {
 	createTopologyManager,
 	OVERVIEW_TAB_LABEL,
@@ -449,5 +450,41 @@ describe("P4-2 — lifecycle reconcile", () => {
 		expect(manager.state()).toBe("open");
 		expect(m.count("createOverviewTab")).toBe(2);
 		await manager.stop();
+	});
+});
+
+describe("final F1 — real resolveViewerCommand() through the launch path", () => {
+	test("the production viewer command word is a runnable `bun <cli.ts>` invocation", async () => {
+		const realViewerCommand = resolveViewerCommand();
+		// the command word itself must be executable — a bare .ts path is not.
+		expect(realViewerCommand.startsWith("bun ")).toBe(true);
+		expect(realViewerCommand.endsWith("cli.ts")).toBe(true);
+		expect(existsSync(realViewerCommand.slice(4))).toBe(true);
+
+		const m = mockAdapter();
+		const { manager } = make({ adapter: m.adapter, viewerCommand: realViewerCommand });
+		await manager.onWorkerSpawned();
+		const run = m.calls.find((c) => c.method === "runInPane");
+		// the launch path must send the RESOLVED command verbatim — no baked
+		// test prefix masking a broken resolver.
+		expect(run?.args[1]).toBe(realViewerCommand);
+		await manager.stop();
+
+		// survivor-rebind path: env prefix + the same runnable command word.
+		const m2 = mockAdapter();
+		m2.panes.set("old-pane", {
+			paneId: "old-pane",
+			tabId: "old-tab",
+			workspaceId: CTX.workspaceId,
+			title: OVERVIEW_TAB_LABEL,
+		});
+		const { manager: manager2 } = make({
+			adapter: m2.adapter,
+			viewerCommand: realViewerCommand,
+		});
+		await manager2.onWorkerSpawned();
+		const relaunch = m2.calls.find((c) => c.method === "runInPane");
+		expect(String(relaunch?.args[1])).toContain(realViewerCommand);
+		await manager2.stop();
 	});
 });
