@@ -16,6 +16,7 @@ import type {
 	PaneMetadata,
 	SessionSnapshot,
 	Subscription,
+	TabInfo,
 } from "../../src/herdr/types";
 import type { Message } from "../../src/protocol/types";
 
@@ -49,6 +50,8 @@ function mockAdapter(
 ) {
 	const calls: RecordedCall[] = [];
 	const panes = new Map<string, PaneInfo>();
+	/** Authoritative tab set (wire `label` — pane.title is null on Herdr 0.9.5). */
+	const tabs = new Map<string, TabInfo>();
 	let handlers: LifecycleHandlers = {};
 	let tabCounter = 0;
 	let paneCounter = 0;
@@ -72,11 +75,12 @@ function mockAdapter(
 			paneCounter += 1;
 			const tabId = `tab-${tabCounter}`;
 			const rootPaneId = `pane-${paneCounter}`;
+			tabs.set(tabId, { tabId, workspaceId: CTX.workspaceId, label });
 			panes.set(rootPaneId, {
 				paneId: rootPaneId,
 				tabId,
 				workspaceId: CTX.workspaceId,
-				title: label,
+				// Herdr 0.9.5: snapshot pane.title stays null — label lives on the tab.
 			});
 			return { tabId, rootPaneId };
 		},
@@ -106,7 +110,7 @@ function mockAdapter(
 		async snapshot(): Promise<SessionSnapshot> {
 			calls.push({ method: "snapshot", args: [] });
 			maybeFail("snapshot");
-			return { workspaces: [], tabs: [], panes: [...panes.values()] };
+			return { workspaces: [], tabs: [...tabs.values()], panes: [...panes.values()] };
 		},
 		async subscribeLifecycle(h: LifecycleHandlers): Promise<Subscription> {
 			calls.push({ method: "subscribeLifecycle", args: [] });
@@ -127,6 +131,7 @@ function mockAdapter(
 	return {
 		adapter,
 		calls,
+		tabs,
 		panes,
 		/** Live failure set — delete a method name to heal the adapter. */
 		failures: failOn,
@@ -274,10 +279,16 @@ describe("P4-2 — surviving-tab rebind (D2)", () => {
 		await m1.manager.onWorkerSpawned();
 		await m1.manager.stop();
 
-		// Restart: same surviving pane visible in the snapshot, new bridge + session.
+		// Restart: same surviving TAB+pane visible in the snapshot — pane.title
+		// is null on Herdr 0.9.5, so the label lives on the tab.
 		const survivor = first.panes.get("pane-1");
 		expect(survivor).toBeDefined();
 		const m = mockAdapter();
+		m.tabs.set("tab-1", {
+			tabId: "tab-1",
+			workspaceId: CTX.workspaceId,
+			label: OVERVIEW_TAB_LABEL,
+		});
 		if (survivor !== undefined) m.panes.set(survivor.paneId, survivor);
 		const { manager } = make({
 			adapter: m.adapter,
@@ -330,11 +341,15 @@ describe("P4-2 — viewer health via bridge connection, not pane.get alone", () 
 
 	test("rebind of a pane whose viewer never connects also degrades", async () => {
 		const m = mockAdapter();
+		m.tabs.set("old-tab", {
+			tabId: "old-tab",
+			workspaceId: CTX.workspaceId,
+			label: OVERVIEW_TAB_LABEL,
+		});
 		m.panes.set("old-pane", {
 			paneId: "old-pane",
 			tabId: "old-tab",
 			workspaceId: CTX.workspaceId,
-			title: OVERVIEW_TAB_LABEL,
 		});
 		const { manager } = make({
 			adapter: m.adapter,
@@ -472,11 +487,15 @@ describe("final F1 — real resolveViewerCommand() through the launch path", () 
 
 		// survivor-rebind path: env prefix + the same runnable command word.
 		const m2 = mockAdapter();
+		m2.tabs.set("old-tab", {
+			tabId: "old-tab",
+			workspaceId: CTX.workspaceId,
+			label: OVERVIEW_TAB_LABEL,
+		});
 		m2.panes.set("old-pane", {
 			paneId: "old-pane",
 			tabId: "old-tab",
 			workspaceId: CTX.workspaceId,
-			title: OVERVIEW_TAB_LABEL,
 		});
 		const { manager: manager2 } = make({
 			adapter: m2.adapter,
@@ -486,5 +505,64 @@ describe("final F1 — real resolveViewerCommand() through the launch path", () 
 		const relaunch = m2.calls.find((c) => c.method === "runInPane");
 		expect(String(relaunch?.args[1])).toContain(realViewerCommand);
 		await manager2.stop();
+	});
+});
+
+describe("one-tab survivor regression (FR-04/FR-05, Herdr 0.9.5)", () => {
+	test("pane.title is null but the tab is labeled — rebind, never a second tab", async () => {
+		// Herdr 0.9.5 reports pane.title=null in session.snapshot; the overview
+		// is identified ONLY by the tab label. A pane-title match never fires,
+		// so the pre-fix code minted a duplicate "OMP subagents" tab per reopen.
+		const m = mockAdapter();
+		m.tabs.set("surv-tab", {
+			tabId: "surv-tab",
+			workspaceId: CTX.workspaceId,
+			label: OVERVIEW_TAB_LABEL,
+		});
+		m.panes.set("surv-pane", {
+			paneId: "surv-pane",
+			tabId: "surv-tab",
+			workspaceId: CTX.workspaceId,
+		});
+		const { manager } = make({ adapter: m.adapter });
+		await manager.onWorkerSpawned();
+		expect(m.count("createOverviewTab")).toBe(0);
+		expect(manager.state()).toBe("open");
+		expect(m.calls.some((c) => c.method === "runInPane" && c.args[0] === "surv-pane")).toBe(true);
+
+		// Second reopen (viewer exit marks the view dead; the pane survives):
+		// still reuses the labeled tab — exactly one "OMP subagents" tab, ever.
+		m.handlers.onPaneExited?.({ workspaceId: CTX.workspaceId, paneId: "surv-pane" });
+		await settle(manager);
+		expect(manager.state()).toBe("closed");
+		await manager.onWorkerSpawned();
+		expect(m.count("createOverviewTab")).toBe(0);
+		expect(manager.state()).toBe("open");
+		await manager.stop();
+	});
+
+	test("duplicate labeled tabs from the earlier bug: rebind the first, mint none", async () => {
+		const m = mockAdapter();
+		m.tabs.set("tab-a", {
+			tabId: "tab-a",
+			workspaceId: CTX.workspaceId,
+			label: OVERVIEW_TAB_LABEL,
+		});
+		m.tabs.set("tab-b", {
+			tabId: "tab-b",
+			workspaceId: CTX.workspaceId,
+			label: OVERVIEW_TAB_LABEL,
+		});
+		m.panes.set("pane-a", { paneId: "pane-a", tabId: "tab-a", workspaceId: CTX.workspaceId });
+		m.panes.set("pane-b", { paneId: "pane-b", tabId: "tab-b", workspaceId: CTX.workspaceId });
+		const { manager, messages } = make({ adapter: m.adapter });
+		await manager.onWorkerSpawned();
+		expect(m.count("createOverviewTab")).toBe(0);
+		expect(manager.state()).toBe("open");
+		// The FIRST labeled tab's pane is rebound — extras are left to the user.
+		expect(m.calls.some((c) => c.method === "runInPane" && c.args[0] === "pane-a")).toBe(true);
+		expect(m.calls.some((c) => c.method === "runInPane" && c.args[0] === "pane-b")).toBe(false);
+		expect(messages.some((msg) => msg.type === "notice" && msg.level === "warn")).toBe(true);
+		await manager.stop();
 	});
 });

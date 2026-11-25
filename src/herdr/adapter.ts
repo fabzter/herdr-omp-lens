@@ -12,7 +12,7 @@ import { z } from "zod";
 import type { CallerContext } from "./context";
 import { assertAllowedRequest } from "./guards";
 import { HerdrApiError, type HerdrTransport, socketTransport } from "./transport";
-import type { PaneInfo, PaneMetadata, SessionSnapshot } from "./types";
+import type { PaneInfo, PaneMetadata, SessionSnapshot, TabInfo } from "./types";
 
 /**
  * The single boundary every adapter call routes through: guard first, then
@@ -47,6 +47,26 @@ const wirePaneInfo = z
 		return pane;
 	});
 
+/**
+ * Tabs carry `label` even when pane `title` is null (Herdr 0.9.5), so the
+ * overview survivor is matched on this — never on pane.title. Extra wire
+ * keys (agent_status, focused, number, pane_count, …) are stripped.
+ */
+const wireTabInfo = z
+	.object({
+		tab_id: z.string(),
+		workspace_id: z.string(),
+		label: z
+			.string()
+			.nullish()
+			.transform((v) => v ?? undefined),
+	})
+	.transform((w): TabInfo => {
+		const tab: TabInfo = { tabId: w.tab_id, workspaceId: w.workspace_id };
+		if (w.label !== undefined) tab.label = w.label;
+		return tab;
+	});
+
 const tabCreatedResult = z.object({
 	type: z.literal("tab_created"),
 	tab: z.object({ tab_id: z.string() }),
@@ -61,7 +81,7 @@ const sessionSnapshotResult = z.object({
 	type: z.literal("session_snapshot"),
 	snapshot: z.object({
 		workspaces: z.array(z.unknown()),
-		tabs: z.array(z.unknown()),
+		tabs: z.array(wireTabInfo),
 		panes: z.array(wirePaneInfo),
 	}),
 });

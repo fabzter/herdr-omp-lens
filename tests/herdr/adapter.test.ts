@@ -187,9 +187,23 @@ describe("getPane", () => {
 });
 
 describe("snapshot", () => {
-	test("maps session.snapshot result; panes validated, workspaces/tabs passthrough", async () => {
+	test("maps session.snapshot result; panes+tabs validated, workspaces passthrough", async () => {
 		const workspaces = [{ workspace_id: "w1", label: "daily" }];
-		const tabs = [{ tab_id: "w1:t1", workspace_id: "w1" }];
+		// Wire shape per the 0.9.5 probe: snake_case, extra keys (focused,
+		// pane_count, …) are stripped; label survives even though pane.title
+		// is null on this version.
+		const tabs = [
+			{
+				tab_id: "w1:t1",
+				workspace_id: "w1",
+				label: "OMP subagents",
+				focused: false,
+				pane_count: 1,
+				number: 2,
+				agent_status: "idle",
+			},
+			{ tab_id: "w1:t2", workspace_id: "w1" },
+		];
 		const { calls, transport } = mockTransport({
 			"session.snapshot": {
 				type: "session_snapshot",
@@ -208,7 +222,10 @@ describe("snapshot", () => {
 
 		expect(calls[0]?.method).toBe("session.snapshot");
 		expect(snap.workspaces).toEqual(workspaces);
-		expect(snap.tabs).toEqual(tabs);
+		expect(snap.tabs).toEqual([
+			{ tabId: "w1:t1", workspaceId: "w1", label: "OMP subagents" },
+			{ tabId: "w1:t2", workspaceId: "w1" },
+		]);
 		expect(snap.panes).toEqual([
 			{ paneId: "w1:p1", tabId: "w1:t1", workspaceId: "w1" },
 			{ paneId: "w1:p2", tabId: "w1:t2", workspaceId: "w1", title: "v" },

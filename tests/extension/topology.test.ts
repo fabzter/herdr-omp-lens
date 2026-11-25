@@ -12,6 +12,7 @@ import type {
 	PaneMetadata,
 	SessionSnapshot,
 	Subscription,
+	TabInfo,
 } from "../../src/herdr/types";
 import type { Message } from "../../src/protocol/types";
 
@@ -32,10 +33,12 @@ interface RecordedCall {
 	args: unknown[];
 }
 
-/** Mock adapter: records calls, keeps an authoritative pane set, captures handlers. */
+/** Mock adapter: records calls, keeps authoritative pane + tab sets, captures handlers. */
 function mockAdapter(opts: { failOn?: string[]; deferSubscribe?: boolean } = {}) {
 	const calls: RecordedCall[] = [];
 	const panes = new Map<string, PaneInfo>();
+	/** Authoritative tab set (wire `label` — pane.title is null on Herdr 0.9.5). */
+	const tabs = new Map<string, TabInfo>();
 	let handlers: LifecycleHandlers = {};
 	let tabCounter = 0;
 	let paneCounter = 0;
@@ -55,11 +58,12 @@ function mockAdapter(opts: { failOn?: string[]; deferSubscribe?: boolean } = {})
 			paneCounter += 1;
 			const tabId = `tab-${tabCounter}`;
 			const rootPaneId = `pane-${paneCounter}`;
+			tabs.set(tabId, { tabId, workspaceId: CTX.workspaceId, label });
 			panes.set(rootPaneId, {
 				paneId: rootPaneId,
 				tabId,
 				workspaceId: CTX.workspaceId,
-				title: label,
+				// Herdr 0.9.5: snapshot pane.title stays null — label lives on the tab.
 			});
 			return { tabId, rootPaneId };
 		},
@@ -88,7 +92,7 @@ function mockAdapter(opts: { failOn?: string[]; deferSubscribe?: boolean } = {})
 		async snapshot(): Promise<SessionSnapshot> {
 			calls.push({ method: "snapshot", args: [] });
 			maybeFail("snapshot");
-			return { workspaces: [], tabs: [], panes: [...panes.values()] };
+			return { workspaces: [], tabs: [...tabs.values()], panes: [...panes.values()] };
 		},
 		async subscribeLifecycle(h: LifecycleHandlers): Promise<Subscription> {
 			calls.push({ method: "subscribeLifecycle", args: [] });
@@ -115,6 +119,7 @@ function mockAdapter(opts: { failOn?: string[]; deferSubscribe?: boolean } = {})
 	return {
 		adapter,
 		calls,
+		tabs,
 		panes,
 		get handlers() {
 			return handlers;
@@ -435,12 +440,17 @@ describe("topology manager — degradation + stop", () => {
 describe("topology manager — review-fix regressions", () => {
 	test("F1: survivor rebind relaunches the viewer with refreshed LENS_* env (P4-R4/D2)", async () => {
 		const m = mockAdapter();
-		// A surviving "OMP subagents" pane from a PREVIOUS OMP session
+		// A surviving "OMP subagents" TAB from a PREVIOUS OMP session — the
+		// pane carries no title (Herdr 0.9.5); the label lives on the tab.
+		m.tabs.set("old-tab", {
+			tabId: "old-tab",
+			workspaceId: CTX.workspaceId,
+			label: OVERVIEW_TAB_LABEL,
+		});
 		m.panes.set("old-pane", {
 			paneId: "old-pane",
 			tabId: "old-tab",
 			workspaceId: CTX.workspaceId,
-			title: OVERVIEW_TAB_LABEL,
 		});
 		const { manager } = make({ adapter: m.adapter, sessionId: "sess-new" });
 		await manager.onWorkerSpawned();
@@ -460,7 +470,14 @@ describe("topology manager — review-fix regressions", () => {
 		const { manager } = make({ adapter: m.adapter });
 		await manager.onWorkerSpawned();
 		const { paneId: splitPane } = await manager.openWorkerSplit("w-1");
-		// user drags the split out of the OMP subagents tab — id rewrite on move
+		// user drags the split out of the OMP subagents tab — id rewrite on move.
+		// The event AND the authoritative pane record move to the new tab (as a
+		// real session.snapshot would report it).
+		m.panes.set(splitPane, {
+			paneId: splitPane,
+			tabId: "tab-other",
+			workspaceId: CTX.workspaceId,
+		});
 		m.handlers.onPaneMoved?.({
 			previousPaneId: splitPane,
 			previousWorkspaceId: CTX.workspaceId,
@@ -519,15 +536,19 @@ describe("topology manager — review-fix regressions", () => {
 		await manager.stop();
 	});
 
-	test("final F6: a split-titled pane is not adopted as the overview survivor", async () => {
+	test("final F6: a tab labeled '…· w-1' is not adopted as the overview survivor", async () => {
 		const m = mockAdapter();
-		// "OMP subagents · w-1" — a worker split (or user pane) whose title merely
+		// "OMP subagents · w-1" — a worker-split/user tab whose label merely
 		// CONTAINS the overview label must not be adopted as the overview.
+		m.tabs.set("stray-tab", {
+			tabId: "stray-tab",
+			workspaceId: CTX.workspaceId,
+			label: `${OVERVIEW_TAB_LABEL} · w-1`,
+		});
 		m.panes.set("stray", {
 			paneId: "stray",
 			tabId: "stray-tab",
 			workspaceId: CTX.workspaceId,
-			title: `${OVERVIEW_TAB_LABEL} · w-1`,
 		});
 		const { manager } = make({ adapter: m.adapter });
 		await manager.onWorkerSpawned();
@@ -537,13 +558,17 @@ describe("topology manager — review-fix regressions", () => {
 		await manager.stop();
 	});
 
-	test("final F6: an exact-title survivor is still adopted (positive control)", async () => {
+	test("final F6: an exact-label survivor tab is still adopted (positive control)", async () => {
 		const m = mockAdapter();
+		m.tabs.set("old-tab", {
+			tabId: "old-tab",
+			workspaceId: CTX.workspaceId,
+			label: OVERVIEW_TAB_LABEL,
+		});
 		m.panes.set("old-pane", {
 			paneId: "old-pane",
 			tabId: "old-tab",
 			workspaceId: CTX.workspaceId,
-			title: OVERVIEW_TAB_LABEL,
 		});
 		const { manager } = make({ adapter: m.adapter });
 		await manager.onWorkerSpawned();
