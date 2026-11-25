@@ -125,7 +125,7 @@ P6 ──► P7 ──► P8 ──► (P9, P10, P11 parallel, owner-gated)   (v
 - v1 is **read-only**; only **direct** native task workers of the **current** session.
 - Auto-open when in Herdr; **next subtask reopens** after a manual close.
 - Finished workers **collapse by default**; history accessible incl. after restart (marked not-live).
-- Pin OMP **19.1.1** / Herdr **0.9.5** (re-pinned from 19.0.1 per owner OI-1 decision 2026-11-25; observed bus shapes unchanged from the 19.0.1 Phase-0 probe); feature-detect undocumented APIs; **do not read OMP
+- Pin OMP **19.2.1** / Herdr **0.9.5** (19.0.1 → 19.1.1 OI-1 → 19.2.1 OI-4, owner decisions 2026-11-25; observed bus shapes unchanged from the 19.0.1 Phase-0 probe); feature-detect undocumented APIs; **do not read OMP
   implementation source** to fill gaps — probe empirically.
 - Reusable repo, humane personality, good docs; **no upstream submission** unless separately requested.
 - Routine delegation on lighter models; stronger models for review.

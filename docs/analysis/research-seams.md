@@ -1,7 +1,7 @@
 # Research: OMP ↔ Herdr integration seams
 
 Status: verified against official documentation on 2026-11-19.
-Versions observed: **OMP 19.0.1** (at research time — the spec pin later moved to 19.1.1 per owner OI-1 decision 2026-11-25), **Herdr 0.9.5** (client/server protocol 22, compatible).
+Versions observed: **OMP 19.0.1** (at research time — the spec pin later moved to 19.1.1 per OI-1, then 19.2.1 per OI-4, owner decisions 2026-11-25), **Herdr 0.9.5** (client/server protocol 22, compatible).
 Method: two read-only documentation scouts (official docs + published schema), coordinator
 re-verification of the load-bearing claims. No implementation source was read; no live Herdr
 topology was mutated. Claims are tagged `verified` (documented) or `unknown` (must be probed).

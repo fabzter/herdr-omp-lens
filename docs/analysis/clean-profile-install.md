@@ -25,6 +25,21 @@ versions (OMP 19.1.1 / Herdr 0.9.5), which now equal the spec pin. No 19.0.1
 re-verify is required; the observed bus shapes are unchanged from the 19.0.1
 Phase-0 probe.
 
+### OI-4 addendum (2026-11-25, later the same day)
+
+The installed binary upgraded to **omp/19.2.1** (`~/.local/bin/omp` dated
+2026-11-25 12:23) while the spec pin still read 19.1.1 — a second drift,
+recorded as an owner decision per the same rule. **The owner approved
+re-pinning the spec to OMP 19.2.1 (OI-4 resolved)**: all forward-looking
+pins moved (README, SDD, master plan, phase specs, `gen-dod-report.ts`
+`EXPECTED_OMP` + DC-6 guard). The v1 evidence runs in this file stay
+version-stamped on 19.1.1 — they are not re-verified; the DoD report and
+README "Verified commands" block were regenerated on 19.2.1 instead.
+`@oh-my-pi/pi-tui` and `@oh-my-pi/pi-wire` are pinned to the same **19.2.1**
+(the TUI library the installed OMP embeds — pi-tui publishes in lockstep
+with OMP), so the v1.1 viewer renders the installed OMP's own component
+output, not a different version's.
+
 ## 2. Clean-profile install
 
 ### Profile isolation mechanism

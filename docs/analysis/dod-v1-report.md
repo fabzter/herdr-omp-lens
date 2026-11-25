@@ -3,11 +3,11 @@
 > GENERATED FILE — do not edit. Regenerate with `bun scripts/gen-dod-report.ts`.
 > Owner sign-off (P6-R11): **UNSIGNED — the owner signs, the agent only prepares.** See §Sign-off.
 
-- Generated: 2026-11-25 · commit `ca1b945` · Bun 1.3.14
-- Environment: OMP **19.1.1** (installed == spec pin **19.1.1** — OI-1 resolved 2026-11-25, re-pinned from 19.0.1) · Herdr **0.9.5** (probed live: `omp --version` / `herdr --version`)
-- Test gate: `bun test` → **460 pass / 0 fail** (155 suites, 1658 assertions)
-- Static gates: `bun run typecheck` clean · `bun run lint` clean (Checked 66 files in 21ms. No fixes applied.)
-- Suite summary: `Ran 460 tests across 35 files. [3.77s]`
+- Generated: 2026-11-25 · commit `c21b3cf` · Bun 1.3.14
+- Environment: OMP **19.2.1** (installed == spec pin **19.2.1** — OI-1 + OI-4 resolved 2026-11-25: 19.0.1 → 19.1.1 → 19.2.1) · Herdr **0.9.5** (probed live: `omp --version` / `herdr --version`)
+- Test gate: `bun test` → **469 pass / 0 fail** (160 suites, 1706 assertions)
+- Static gates: `bun run typecheck` clean · `bun run lint` clean (Checked 68 files in 51ms. No fixes applied.)
+- Suite summary: `Ran 469 tests across 36 files. [3.72s]`
 
 ## Requirement matrix
 
@@ -34,7 +34,7 @@ Every FR-01..15 + NFR-01..06 has exactly one row. Legend:
 | FR-14 | Ownership invariants — view ops never spawn or remove workers | pass | 4 tests pass | 1 capture |
 | FR-15 | Reusable package — omp plugin link/install, humane README+docs | pass | 4 tests pass | 1 capture |
 | NFR-01 | Local-only — unix socket 0600/0700, no network, no secrets | pass | 6 tests pass | — |
-| NFR-02 | Version discipline — pin OMP 19.1.1 / Herdr 0.9.5, fail soft on drift | pass | 4 tests pass | 1 capture |
+| NFR-02 | Version discipline — pin OMP 19.2.1 / Herdr 0.9.5, fail soft on drift | pass | 4 tests pass | 1 capture |
 | NFR-03 | Performance — coalesce ≤150 ms, bounded buffers, bounded tail | pass | 5 tests pass | 1 capture |
 | NFR-04 | Safety — OMP sole owner; no agent start/report_agent; no focus:true | pass | 8 tests pass | 1 capture |
 | NFR-05 | Testability — reducer/protocol/adapter units + isolated-session integration + tamper-proven | pass | 4 tests pass | 2 captures |
@@ -78,29 +78,29 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 
 ### FR-04 — Overview tab — one no-focus `OMP subagents` tab on first spawn · status: pass
 
-- `tests/extension/topology.test.ts :: "first spawn opens one no-focus overview tab and runs the viewer (P4-R2)" (line 166, pass)`
-- `tests/extension/topology.test.ts :: "single-flight: parallel spawns create exactly one tab (P4-R4)" (line 182, pass)`
-- `tests/extension/topology.test.ts :: "subscribes lifecycle before the first createOverviewTab (P4-R1)" (line 156, pass)`
-- `tests/extension/topology-herdr.test.ts :: "runInPane sends the short viewer command verbatim into the root pane" (line 224, pass)`
-- `tests/extension/topology.test.ts :: "onHistoryPresent auto-opens the overview with no spawn (D2)" (line 229, pass)`
+- `tests/extension/topology.test.ts :: "first spawn opens one no-focus overview tab and runs the viewer (P4-R2)" (line 171, pass)`
+- `tests/extension/topology.test.ts :: "single-flight: parallel spawns create exactly one tab (P4-R4)" (line 187, pass)`
+- `tests/extension/topology.test.ts :: "subscribes lifecycle before the first createOverviewTab (P4-R1)" (line 161, pass)`
+- `tests/extension/topology-herdr.test.ts :: "runInPane sends the short viewer command verbatim into the root pane" (line 229, pass)`
+- `tests/extension/topology.test.ts :: "onHistoryPresent auto-opens the overview with no spawn (D2)" (line 234, pass)`
 
 - manual: docs/analysis/phase-0-caveat-closure.md §Caveat 1 — witnessed session 01a210e2-5995-74b7-99d0-1acf4182b855 — overview tab auto-opened on the history/spawn signal
 - manual: docs/analysis/clean-profile-install.md §3 — clean-profile run — tab `w11:t2 "OMP subagents"` (pane `w11:p2`), focus stayed `wN`
 
 ### FR-05 — Reopen after close — next spawn reopens exactly one tab · status: pass
 
-- `tests/extension/topology.test.ts :: "manual close is respected; next spawn reopens exactly once (P4-R3)" (line 238, pass)`
-- `tests/extension/topology.test.ts :: "final F2: overview pane.exited marks the view dead; next spawn relaunches in the same pane" (line 498, pass)`
-- `tests/extension/topology.test.ts :: "F2: a split moved out of the tab does not block tab.closed confirm (FR-05)" (line 458, pass)`
-- `tests/extension/topology.test.ts :: "tab.closed while pane still present in snapshot does NOT mark closed (moved race)" (line 264, pass)`
+- `tests/extension/topology.test.ts :: "manual close is respected; next spawn reopens exactly once (P4-R3)" (line 243, pass)`
+- `tests/extension/topology.test.ts :: "final F2: overview pane.exited marks the view dead; next spawn relaunches in the same pane" (line 515, pass)`
+- `tests/extension/topology.test.ts :: "F2: a split moved out of the tab does not block tab.closed confirm (FR-05)" (line 468, pass)`
+- `tests/extension/topology.test.ts :: "tab.closed while pane still present in snapshot does NOT mark closed (moved race)" (line 269, pass)`
 
 - manual: docs/analysis/e2e-evidence.md §Run D — E2E step s2 (close → next spawn → exactly one tab w17:t3, FR-14 worker survives) — LIVE-WITNESSED in Run D 2026-11-25 (owner-witnessed, w17)
 
 ### FR-06 — Optional split — no-focus worker-scoped split, close ≠ cancel · status: manual-evidence
 
-- `tests/extension/topology.test.ts :: "openWorkerSplit creates a no-focus worker-scoped split (P4-R7)" (line 341, pass)`
-- `tests/extension/topology.test.ts :: "one split per worker: repeat call returns the live pane (Q-P4-3)" (line 359, pass)`
-- `tests/extension/topology.test.ts :: "closing a split emits topology, never worker.removed (P4-R8/FR-14)" (line 384, pass)`
+- `tests/extension/topology.test.ts :: "openWorkerSplit creates a no-focus worker-scoped split (P4-R7)" (line 346, pass)`
+- `tests/extension/topology.test.ts :: "one split per worker: repeat call returns the live pane (Q-P4-3)" (line 364, pass)`
+- `tests/extension/topology.test.ts :: "closing a split emits topology, never worker.removed (P4-R8/FR-14)" (line 389, pass)`
 - `tests/extension/lens-commands.test.ts :: "/lens split <id> dispatches through the lens handler to openWorkerSplit" (line 325, pass)`
 - `tests/extension/lens-commands.test.ts :: "/lens split without an id does nothing" (line 335, pass)`
 - `tests/viewer/cli.test.ts :: "worker-scoped launch filters the screen to the scoped id only" (line 357, pass)`
@@ -158,7 +158,7 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 - `tests/guards/fail-soft.test.ts :: "adapter death mid-transition: turn completes, one notice, roster intact" (line 759, pass)`
 - `tests/guards/fail-soft.test.ts :: "circuit-break: adapter over a stalled socket degrades the topology with one notice" (line 633, pass)`
 - `tests/guards/invariants.test.ts :: "(f) FR-12: handlers never throw when bridge + Herdr are dead" (line 486, pass)`
-- `tests/extension/topology.test.ts :: "adapter failure degrades + notice, spawn signals still flow (P4-R11)" (line 411, pass)`
+- `tests/extension/topology.test.ts :: "adapter failure degrades + notice, spawn signals still flow (P4-R11)" (line 416, pass)`
 - `tests/viewer/render.test.ts :: "degraded and offline states are surfaced (FR-12, D1)" (line 174, pass)`
 
 - manual: tests/guards/sabotage.md §(f) — sabotage red — an unguarded notice subscriber throws "dead bridge" into the handler
@@ -166,7 +166,7 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 ### FR-13 — No focus theft — every topology op is no-focus · status: pass
 
 - `tests/guards/invariants.test.ts :: "(c) FR-13: every adapter create/split/run is no-focus; guard still throws" (line 388, pass)`
-- `tests/extension/topology-herdr.test.ts :: "no-focus surface: topology never emits focus/ forbidden calls (P4-R5/R6 tamper)" (line 235, pass)`
+- `tests/extension/topology-herdr.test.ts :: "no-focus surface: topology never emits focus/ forbidden calls (P4-R5/R6 tamper)" (line 240, pass)`
 - `tests/herdr/adapter.test.ts :: "sends tab.create with workspace_id, label, focus:false and env passthrough" (line 69, pass)`
 - `tests/herdr/guards.test.ts :: "tab.create with focus:true throws (focus theft)" (line 29, pass)`
 - `tests/herdr/adapter.test.ts :: "sends pane.split with target_pane_id, direction, focus:false, env passthrough" (line 111, pass)`
@@ -178,8 +178,8 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 
 - `tests/guards/invariants.test.ts :: "(a) FR-14: closing the overview and a split never removes the worker" (line 298, pass)`
 - `tests/guards/invariants.test.ts :: "(b) FR-14: open/split/close/reopen never spawns a duplicate worker" (line 338, pass)`
-- `tests/extension/topology.test.ts :: "onWorkerFinished drops the split binding only — never worker effects (P4-R8)" (line 370, pass)`
-- `tests/extension/topology.test.ts :: "closing a split emits topology, never worker.removed (P4-R8/FR-14)" (line 384, pass)`
+- `tests/extension/topology.test.ts :: "onWorkerFinished drops the split binding only — never worker effects (P4-R8)" (line 375, pass)`
+- `tests/extension/topology.test.ts :: "closing a split emits topology, never worker.removed (P4-R8/FR-14)" (line 389, pass)`
 
 - manual: tests/guards/sabotage.md §(a)/§(b) — sabotage red — split-close → worker.removed and view-op re-spawn both fail the suite
 
@@ -188,7 +188,7 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 - `tests/extension/resolve.test.ts :: "returns a runnable `bun <abs path to src/viewer/cli.ts>` invocation" (line 10, pass)`
 - `tests/extension/resolve.test.ts :: "is independent of process.cwd()" (line 22, pass)`
 - `tests/viewer/cli.test.ts :: "resolveViewerCommand resolves to the real cli.ts behind a runnable `bun` word" (line 84, pass)`
-- `tests/extension/topology-herdr.test.ts :: "the production viewer command word is a runnable `bun <cli.ts>` invocation" (line 457, pass)`
+- `tests/extension/topology-herdr.test.ts :: "the production viewer command word is a runnable `bun <cli.ts>` invocation" (line 472, pass)`
 
 - manual: docs/analysis/clean-profile-install.md §2–§3 — clean-profile `p6t7-clean` link + live delegation from `/private/tmp/p6t7-scratch`: viewer `[connected]`, argv rooted at installed package
 
@@ -201,14 +201,14 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 - `tests/extension/history/guards.test.ts :: "scans the real history sources (non-vacuous: scan.ts is present)" (line 263, pass)`
 - `tests/extension/bridge.test.ts :: "two bridges in the same session get unique socket paths" (line 407, pass)`
 
-### NFR-02 — Version discipline — pin OMP 19.1.1 / Herdr 0.9.5, fail soft on drift · status: pass
+### NFR-02 — Version discipline — pin OMP 19.2.1 / Herdr 0.9.5, fail soft on drift · status: pass
 
 - `tests/extension/observe-wiring.test.ts :: "absent pi.events degrades: one warn notice is broadcast after bridge start" (line 355, pass)`
 - `tests/extension/roster.test.ts :: "unknown status keeps the last known status and emits a notice" (line 160, pass)`
 - `tests/extension/observe/schemas.test.ts :: "tolerates extra event keys (message_end carries a message)" (line 109, pass)`
 - `tests/guards/fail-soft.test.ts :: "per-call timeout defaults are 2s connect / 5s request (source pin)" (line 609, pass)`
 
-- manual: docs/analysis/clean-profile-install.md §1 — installed `omp/19.1.1` (self-reported) + `herdr 0.9.5` == re-pinned spec — OI-1 resolved 2026-11-25 (owner approved re-pin from 19.0.1)
+- manual: docs/analysis/clean-profile-install.md §1 — installed `omp/19.2.1` (self-reported) + `herdr 0.9.5` == re-pinned spec — OI-1 + OI-4 resolved 2026-11-25 (owner approved re-pins 19.0.1 → 19.1.1 → 19.2.1)
 
 ### NFR-03 — Performance — coalesce ≤150 ms, bounded buffers, bounded tail · status: pass
 
@@ -227,7 +227,7 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 - `tests/guards/herdr-source-scan.test.ts :: "a guards.ts missing denylist entries is flagged (requireDenylist)" (line 207, pass)`
 - `tests/herdr/guards.test.ts :: "String.fromCharCode composition cannot evade the denylist" (line 86, pass)`
 - `tests/herdr/guards.test.ts :: "computed params keys cannot smuggle focus or tab_id" (line 91, pass)`
-- `tests/extension/topology.test.ts :: "owned panes are reported with source, never as an agent (P4-R13)" (line 216, pass)`
+- `tests/extension/topology.test.ts :: "owned panes are reported with source, never as an agent (P4-R13)" (line 221, pass)`
 - `tests/viewer/cli.test.ts :: "no viewer file calls any forbidden pane/agent API or imports the pane adapter" (line 159, pass)`
 - `tests/guards/invariants.test.ts :: "(g) F-15: every pi.on / pi.events.on / command handler is synchronous" (line 520, pass)`
 
@@ -236,7 +236,7 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 ### NFR-05 — Testability — reducer/protocol/adapter units + isolated-session integration + tamper-proven · status: pass
 
 - `tests/guards/lifecycle-reconcile.test.ts :: "events_lost: exactly one live subscription, transparent resubscribe, snapshot reconcile, no duplicate viewer" (line 411, pass)`
-- `tests/guards/shutdown.test.ts :: "session_shutdown is idempotent — a second emit stops nothing twice" (line 255, pass)`
+- `tests/guards/shutdown.test.ts :: "session_shutdown is idempotent — a second emit stops nothing twice" (line 256, pass)`
 - `tests/guards/fail-soft.test.ts :: "stalled (not refused) socket trips the request timeout; refused fails fast" (line 582, pass)`
 - `tests/extension/history/restart.test.ts :: "new activation surfaces prior workers: not-live, transcript.ref, no spawn, no live copy" (line 164, pass)`
 
@@ -245,7 +245,7 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 
 ### NFR-06 — Docs reconcile — docs match shipped behavior exactly · status: pass
 - manual: this report §Doc-vs-shipped checklist (DC-1..DC-21) — machine-asserted README/CONTRIBUTING/architecture sections contain shipped-truth content
-- manual: README.md §Verified commands — every documented command executed 2026-11-25 at commit 515d91dc, output quoted verbatim
+- manual: README.md §Verified commands — every documented command executed 2026-11-25 at commit c21b3cf, output quoted verbatim
 
 ## Safety-invariant sabotage proofs (P6-R2/R3)
 
@@ -283,7 +283,7 @@ Clean restore: `git diff -- src/` empty; clean re-run `7 pass, 0 fail, 83 expect
 | DC-3 | `README.md` | reopen-on-next-subtask semantics | ✓ |
 | DC-4 | `README.md` | degraded-mode behavior documented | ✓ |
 | DC-5 | `README.md` | history caveat R-04 recorded | ✓ |
-| DC-6 | `README.md` | spec pin recorded (re-pinned to 19.1.1 per OI-1) | ✓ |
+| DC-6 | `README.md` | spec pin recorded (re-pinned to 19.2.1 per OI-4) | ✓ |
 | DC-7 | `README.md` | re-pin provenance from the earlier 19.0.1 pin recorded | ✓ |
 | DC-8 | `README.md` | Herdr version recorded | ✓ |
 | DC-9 | `README.md` | worker split command documented | ✓ |
@@ -309,7 +309,7 @@ Clean restore: `git diff -- src/` empty; clean re-run `7 pass, 0 fail, 83 expect
 - history caveat (R-04): live `counters` are not reconstructable from persisted JSONL — historical rows show `counters` absent + not-live badge — _source: docs/superpowers/specs/2026-11-19-herdr-omp-lens-design.md §12 R-04_
 - transient finished-collapse is unit-covered, not witnessed live (reaping can outpace readback) — _source: docs/analysis/e2e-evidence.md Fix-round F3_
 - Herdr-restart viewer-layout restore is out of scope for v1 (v2 horizon) — _source: docs/plans/00-master-plan.md §2 v2 horizon_
-- spec re-pinned 19.0.1 → 19.1.1 (OI-1 resolved 2026-11-25): evidence was collected on OMP 19.1.1 / Herdr 0.9.5, which now equals the pin; observed bus shapes unchanged from the 19.0.1 Phase-0 probe — _source: docs/analysis/clean-profile-install.md §1_
+- spec re-pinned 19.0.1 → 19.1.1 (OI-1) → 19.2.1 (OI-4), owner decisions 2026-11-25: installed binary upgraded to 19.2.1; earlier evidence stays version-stamped (19.1.1); observed bus shapes unchanged from the 19.0.1 Phase-0 probe; pi-tui/pi-wire pinned to the same 19.2.1 — _source: docs/analysis/clean-profile-install.md §1_
 - E2E live steps s3–s5 (/lens split, restart→history, cross-workspace focus) remain manual after owner-witnessed Run D 2026-11-25 — env-coupled: s3 pane-get JSON EOF flake; s4 local-build session-bind gap → viewer-reconnect timeout; s5 spawn-lands timeout (correlated). s1/s2 live-proven in Run D (w17) — _source: docs/analysis/e2e-evidence.md §Manual-evidence steps_
 
 ## Open items for owner decision (P6-R11)
@@ -317,6 +317,7 @@ Clean restore: `git diff -- src/` empty; clean re-run `7 pass, 0 fail, 83 expect
 | ID | Item | Owner action | Source |
 | -- | ---- | ------------ | ------ |
 | OI-1 | Version drift — installed OMP 19.1.1 vs spec pin 19.0.1 | RESOLVED 2026-11-25 — owner approved re-pin to 19.1.1; forward-looking pins moved, evidence stays valid (produced on the now-pinned version) | docs/analysis/clean-profile-install.md §1; .superpowers/sdd/2026-11-24-v1-hardening/progress.md (P6-5 OPEN OWNER DECISION) |
+| OI-4 | Version drift — installed OMP upgraded 19.1.1 → 19.2.1 (2026-11-25) vs spec pin 19.1.1 | RESOLVED 2026-11-25 — owner approved re-pin to 19.2.1 (matches the pi-tui/pi-wire pin = the TUI library the installed OMP embeds); forward-looking pins moved, earlier evidence stays version-stamped on 19.1.1 | docs/analysis/clean-profile-install.md §1 (OI-4 addendum) |
 | OI-2 | E2E live lifecycle steps s2–s5 (close→reopen, /lens split, restart→history, cross-workspace focus) | PARTIALLY RESOLVED 2026-11-25 — owner-witnessed Runs D/E/E2 live-proved s1/s2/s5 (FR-05 + FR-13 cleared); s3 (/lens split: send-text EOF fixed → input-clear + null-title bugs found and fixed, live witness still pending), s4 (local-build bind gap) remain env-coupled manual — rerun `RUN_E2E_LIVE=1 bash scripts/run-e2e.sh` or convert to recorded limitations at sign-off | docs/analysis/e2e-evidence.md §Manual-evidence steps; progress.md (P6-6 CONDITION) |
 | OI-3 | Deferred review minors (non-blocking follow-ups from P6 reviews) | triage at final review; each already has a sibling assertion or bounded failure mode | progress.md deferred-minor lines: invariants (f) h.errors check; scan-herdr-calls errorCtx exemption; e2e unbounded `herdr --version` preflight + stale pre-restart ids; clean-profile scratch teardown; P5 roll-up minors |
 
@@ -324,7 +325,7 @@ Clean restore: `git diff -- src/` empty; clean re-run `7 pass, 0 fail, 83 expect
 
 DoD-v1 acceptance. The agent prepared this pack; **the owner records the decision — never the agent.**
 Signing off means: every `pass` row accepted, every `manual-evidence` row's pending witness
-either witnessed or converted to a recorded limitation, and OI-1..OI-3 resolved or deferred.
+either witnessed or converted to a recorded limitation, and OI-1..OI-4 resolved or deferred.
 
 | Date | Owner | Decision | Notes | Signature |
 | ---- | ----- | -------- | ----- | --------- |

@@ -548,7 +548,7 @@ const REQS: Requirement[] = [
 	},
 	{
 		id: "NFR-02",
-		title: "Version discipline — pin OMP 19.1.1 / Herdr 0.9.5, fail soft on drift",
+		title: "Version discipline — pin OMP 19.2.1 / Herdr 0.9.5, fail soft on drift",
 		tests: [
 			{
 				file: "tests/extension/observe-wiring.test.ts",
@@ -570,7 +570,7 @@ const REQS: Requirement[] = [
 		manual: [
 			{
 				capture: "docs/analysis/clean-profile-install.md §1",
-				what: "installed `omp/19.1.1` (self-reported) + `herdr 0.9.5` == re-pinned spec — OI-1 resolved 2026-11-25 (owner approved re-pin from 19.0.1)",
+				what: "installed `omp/19.2.1` (self-reported) + `herdr 0.9.5` == re-pinned spec — OI-1 + OI-4 resolved 2026-11-25 (owner approved re-pins 19.0.1 → 19.1.1 → 19.2.1)",
 			},
 		],
 	},
@@ -732,8 +732,8 @@ const DOC_CHECKS: DocCheck[] = [
 	{
 		id: "DC-6",
 		file: "README.md",
-		pattern: /OMP 19\.1\.1/,
-		why: "spec pin recorded (re-pinned to 19.1.1 per OI-1)",
+		pattern: /OMP 19\.2\.1/,
+		why: "spec pin recorded (re-pinned to 19.2.1 per OI-4)",
 	},
 	{
 		id: "DC-7",
@@ -859,7 +859,7 @@ const LIMITATIONS: { what: string; source: string }[] = [
 		source: "docs/plans/00-master-plan.md §2 v2 horizon",
 	},
 	{
-		what: "spec re-pinned 19.0.1 → 19.1.1 (OI-1 resolved 2026-11-25): evidence was collected on OMP 19.1.1 / Herdr 0.9.5, which now equals the pin; observed bus shapes unchanged from the 19.0.1 Phase-0 probe",
+		what: "spec re-pinned 19.0.1 → 19.1.1 (OI-1) → 19.2.1 (OI-4), owner decisions 2026-11-25: installed binary upgraded to 19.2.1; earlier evidence stays version-stamped (19.1.1); observed bus shapes unchanged from the 19.0.1 Phase-0 probe; pi-tui/pi-wire pinned to the same 19.2.1",
 		source: "docs/analysis/clean-profile-install.md §1",
 	},
 	{
@@ -874,6 +874,12 @@ const OPEN_ITEMS: { id: string; item: string; ownerAction: string; source: strin
 		item: "Version drift — installed OMP 19.1.1 vs spec pin 19.0.1",
 		ownerAction: "RESOLVED 2026-11-25 — owner approved re-pin to 19.1.1; forward-looking pins moved, evidence stays valid (produced on the now-pinned version)",
 		source: "docs/analysis/clean-profile-install.md §1; .superpowers/sdd/2026-11-24-v1-hardening/progress.md (P6-5 OPEN OWNER DECISION)",
+	},
+	{
+		id: "OI-4",
+		item: "Version drift — installed OMP upgraded 19.1.1 → 19.2.1 (2026-11-25) vs spec pin 19.1.1",
+		ownerAction: "RESOLVED 2026-11-25 — owner approved re-pin to 19.2.1 (matches the pi-tui/pi-wire pin = the TUI library the installed OMP embeds); forward-looking pins moved, earlier evidence stays version-stamped on 19.1.1",
+		source: "docs/analysis/clean-profile-install.md §1 (OI-4 addendum)",
 	},
 	{
 		id: "OI-2",
@@ -1010,7 +1016,7 @@ function main(): number {
 	const date = new Date().toISOString().slice(0, 10);
 
 	// --- live provenance probes (never hardcode what can be re-verified) ------
-	const EXPECTED_OMP = "19.1.1"; // spec pin AND installed version (OI-1 resolved 2026-11-25: re-pinned from 19.0.1)
+	const EXPECTED_OMP = "19.2.1"; // spec pin AND installed version (OI-1 19.0.1→19.1.1, OI-4 →19.2.1, owner decisions 2026-11-25)
 	const EXPECTED_HERDR = "0.9.5";
 	const ompV = probeVersion("omp");
 	const herdrV = probeVersion("herdr");
@@ -1112,7 +1118,7 @@ function main(): number {
 	lines.push(`> Owner sign-off (P6-R11): **UNSIGNED — the owner signs, the agent only prepares.** See §Sign-off.`);
 	lines.push(``);
 	lines.push(`- Generated: ${date} · commit \`${head}\` · Bun ${Bun.version}`);
-	lines.push(`- Environment: OMP **${ompV.version ?? "(probe failed)"}** (installed == spec pin **19.1.1** — OI-1 resolved 2026-11-25, re-pinned from 19.0.1) · Herdr **${herdrV.version ?? "(probe failed)"}** (probed live: \`omp --version\` / \`herdr --version\`)`);
+	lines.push(`- Environment: OMP **${ompV.version ?? "(probe failed)"}** (installed == spec pin **${EXPECTED_OMP}** — OI-1 + OI-4 resolved 2026-11-25: 19.0.1 → 19.1.1 → 19.2.1) · Herdr **${herdrV.version ?? "(probe failed)"}** (probed live: \`omp --version\` / \`herdr --version\`)`);
 	lines.push(`- Test gate: \`bun test\` → **${junit.tests} pass / ${junit.failures} fail** (${junit.suites} suites, ${junit.assertions} assertions)`);
 	lines.push(`- Static gates: \`bun run typecheck\` ${tsc.ok ? "clean" : "**FAILED**"} · \`bun run lint\` ${lint.ok ? `clean (${lint.out.split("\n").pop()})` : "**FAILED**"}`);
 	lines.push(`- Suite summary: \`${junit.stdoutTail.split("\n").slice(-1)[0]}\``);
@@ -1208,7 +1214,7 @@ function main(): number {
 	lines.push(``);
 	lines.push(`DoD-v1 acceptance. The agent prepared this pack; **the owner records the decision — never the agent.**`);
 	lines.push(`Signing off means: every \`pass\` row accepted, every \`manual-evidence\` row's pending witness`);
-	lines.push(`either witnessed or converted to a recorded limitation, and OI-1..OI-3 resolved or deferred.`);
+	lines.push(`either witnessed or converted to a recorded limitation, and OI-1..OI-4 resolved or deferred.`);
 	lines.push(``);
 	lines.push(`| Date | Owner | Decision | Notes | Signature |`);
 	lines.push(`| ---- | ----- | -------- | ----- | --------- |`);
