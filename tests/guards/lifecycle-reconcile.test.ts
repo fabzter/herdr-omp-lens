@@ -410,7 +410,7 @@ describe("P6-R4 — subscribe-before-create + events_lost reconcile", () => {
 
 	test("events_lost: exactly one live subscription, transparent resubscribe, snapshot reconcile, no duplicate viewer", async () => {
 		const m = mockLifecycleAdapter();
-		const { manager } = make(m);
+		const { manager, messages } = make(m);
 		await manager.onWorkerSpawned();
 		await manager.openWorkerSplit("w-1"); // pane-2 tracked in the roster
 		expect(m.subCalls).toBe(1);
@@ -433,7 +433,10 @@ describe("P6-R4 — subscribe-before-create + events_lost reconcile", () => {
 		expect(m.count("events.subscribe")).toBe(2);
 		expect(m.subCalls).toBe(1); // P4 did not resubscribe itself (F-12)
 
-		// The ack gates the hook: no reconcile before subscription_started.
+		// The ack gates the hook: even after the microtask queue drains, no
+		// reconcile may run before subscription_started.
+		await drain();
+		expect(m.count("snapshot")).toBe(snapBefore);
 		openedAt(m.opened, 1).stream.push(SUBSCRIPTION_STARTED);
 		await until(() => m.count("snapshot") > snapBefore);
 		await settle(manager);
@@ -441,6 +444,13 @@ describe("P6-R4 — subscribe-before-create + events_lost reconcile", () => {
 		// Reconciled roster: dead split dropped, overview still open, no new tab.
 		expect(manager.state()).toBe("open");
 		expect(m.count("createOverviewTab")).toBe(1);
+		const lastOpen = [...messages]
+			.reverse()
+			.find(
+				(msg): msg is Extract<Message, { type: "topology" }> =>
+					msg.type === "topology" && msg.state === "open",
+			);
+		expect(lastOpen?.paneIds).toEqual(["pane-1"]); // pane-2 pruned by reconcileOwned
 		expect(m.liveSubs).toBe(1);
 		expect(m.liveStreams()).toBe(1); // exactly one live subscription — never two
 
