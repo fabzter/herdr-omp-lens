@@ -28,6 +28,12 @@ export type LensHookHandler = (event: unknown) => void;
  */
 export interface LensEventBus {
 	on(channel: string, handler: (payload: unknown) => void): void;
+	/**
+	 * Detach a channel handler when the host bus exposes removal. Optional:
+	 * the bus surface is undocumented (Phase 0), so consumers also guard
+	 * handlers with a stopped flag for a deterministic `stop()`.
+	 */
+	off?(channel: string, handler: (payload: unknown) => void): void;
 }
 
 /** The subset of `ExtensionAPI` the lens extension touches. */
@@ -36,6 +42,8 @@ export interface LensExtensionApi {
 	registerCommand(name: string, definition: LensCommandDefinition): void;
 	/** Subscribe to an OMP lifecycle hook (e.g. `before_subagent_spawn`). */
 	on(event: string, handler: LensHookHandler): void;
+	/** Detach a hook handler when the host exposes removal (best-effort). */
+	off?(event: string, handler: LensHookHandler): void;
 	/** Event bus for `task:subagent:*` channels. */
 	events: LensEventBus;
 }
