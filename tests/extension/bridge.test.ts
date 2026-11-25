@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { StringDecoder } from "node:string_decoder";
@@ -62,6 +62,7 @@ class Client {
 		timer: NodeJS.Timeout;
 	}> = [];
 	readonly closed: Promise<void>;
+	wasClosed = false;
 	private resolveClosed!: () => void;
 
 	private constructor(private readonly socket: Socket) {
@@ -88,6 +89,7 @@ class Client {
 					}
 				},
 				close() {
+					client.wasClosed = true;
 					client.resolveClosed();
 				},
 				connectError(_socket: Socket, error: unknown) {
@@ -491,5 +493,120 @@ describe("bounded buffers / slow consumers (NFR-03, FR-12)", () => {
 		b.broadcast({ v: 1, type: "notice", level: "warn", message: "still-here" });
 		const n = await fast.waitFor((m) => m.type === "notice" && m.message === "still-here");
 		expect(n.type).toBe("notice");
+	});
+});
+
+describe("regressions (review round 1)", () => {
+	test("F1: post-handshake inbound bytes are discarded, never buffered", async () => {
+		const roster = new Roster();
+		const b = await openWithRoster(roster, { coalesceMs: COALESCE_MS });
+		const c = await connect(b);
+		c.handshake();
+		await c.waitFor((m) => m.type === "hello");
+		// >64KB of newline-free junk plus a fake second handshake line; none of
+		// it may be retained or acted on
+		c.send("x".repeat(128 * 1024));
+		c.send(`${JSON.stringify({ v: 1, role: "viewer", session: "re-handshake" })}\n`);
+		c.send("y".repeat(64 * 1024));
+		liveWorker(roster);
+		const up = await c.waitFor((m) => m.type === "worker.upsert" && m.worker.id === "w1");
+		expect(up.type).toBe("worker.upsert");
+		// REALTIME: give a hypothetical server-side drop one short window
+		await sleep(30);
+		expect(c.wasClosed).toBe(false);
+	});
+
+	test("F2: pending bytes counted in UTF-8 bytes, not UTF-16 length", async () => {
+		const b = await openWithRoster(new Roster(), {
+			coalesceMs: COALESCE_MS,
+			maxClientBufferedBytes: 8 * 1024,
+		});
+		const slow = await connect(b);
+		slow.handshake();
+		await slow.waitFor((m) => m.type === "hello");
+		slow.pause();
+		// ~20KB UTF-8 but only ~10KB UTF-16 units; UTF-16 accounting would
+		// undercount and never drop the stalled client
+		b.broadcast({ v: 1, type: "notice", level: "info", message: "\ud83d\ude80".repeat(5000) });
+		slow.resume();
+		await Promise.race([
+			slow.closed,
+			sleep(1000).then(() => {
+				throw new Error("stalled client was not dropped (UTF-16 undercount)");
+			}),
+		]);
+	});
+
+	test("F3a: socketPath override into a pre-existing 0700 dir works, no chmod", async () => {
+		const dir = join(tmp, "pre0700");
+		mkdirSync(dir, { mode: 0o700 });
+		bridge = await startBridge(new Roster(), {
+			socketPath: join(dir, "b.sock"),
+			coalesceMs: COALESCE_MS,
+		});
+		expect(statSync(dir).mode & 0o777).toBe(0o700);
+		expect(existsSync(bridge.socketPath)).toBe(true);
+	});
+
+	test("F3b: socketPath override into a pre-existing non-0700 dir rejects, dir untouched", async () => {
+		const dir = join(tmp, "shared");
+		mkdirSync(dir, { mode: 0o755 });
+		await expect(
+			startBridge(new Roster(), {
+				socketPath: join(dir, "b.sock"),
+				coalesceMs: COALESCE_MS,
+			}),
+		).rejects.toThrow(/0700|mode/i);
+		expect(statSync(dir).mode & 0o777).toBe(0o755); // no destructive chmod
+		expect(existsSync(join(dir, "b.sock"))).toBe(false);
+	});
+
+	test("F4: signal with other listeners present unlinks but does not re-raise", async () => {
+		const b = await open({ coalesceMs: COALESCE_MS });
+		const p = b.socketPath;
+		let calls = 0;
+		const keepAlive = () => {
+			calls++;
+		};
+		process.on("SIGTERM", keepAlive);
+		try {
+			process.kill(process.pid, "SIGTERM");
+			// REALTIME: signal delivery is scheduled by the runtime
+			await sleep(50);
+			expect(calls).toBe(1); // exactly once: the bridge must not re-raise
+			expect(existsSync(p)).toBe(false);
+		} finally {
+			process.removeListener("SIGTERM", keepAlive);
+		}
+	});
+
+	test("F5: roster callbacks after close() are inert (no timers scheduled)", async () => {
+		const roster = new Roster();
+		const b = await openWithRoster(roster, { coalesceMs: COALESCE_MS });
+		await b.close();
+		bridge = null;
+		const orig = globalThis.setTimeout;
+		let scheduled = 0;
+		globalThis.setTimeout = ((...args: Parameters<typeof setTimeout>) => {
+			scheduled++;
+			return orig(...args);
+		}) as typeof setTimeout;
+		try {
+			roster.applySpawn(spawn("w9"));
+			roster.applyLifecycle(lifecycle("w9", "started"));
+		} finally {
+			globalThis.setTimeout = orig;
+		}
+		expect(scheduled).toBe(0);
+	});
+
+	test("F6: guard — bridge binds only a unix socket, never TCP (P2-R6)", async () => {
+		const source = await Bun.file(
+			resolve(import.meta.dirname, "../../src/extension/bridge.ts"),
+		).text();
+		expect(source).toContain("unix: socketPath");
+		expect(source).not.toMatch(/\bhostname\s*:/);
+		expect(source).not.toMatch(/\bport\s*:/);
+		expect(source).not.toContain("Bun.serve");
 	});
 });

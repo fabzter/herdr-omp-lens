@@ -22,7 +22,7 @@
  *   exceeds the cap is dropped with a `notice` — never allowed to stall a
  *   roster callback.
  */
-import { chmodSync, existsSync, mkdirSync, rmdirSync, unlinkSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, rmdirSync, statSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
@@ -85,7 +85,7 @@ function defaultSocketDir(cwd: string | undefined): string {
 	);
 }
 
-export function startBridge(roster: Roster, opts: BridgeOptions = {}): Promise<BridgeHandle> {
+export async function startBridge(roster: Roster, opts: BridgeOptions = {}): Promise<BridgeHandle> {
 	const coalesceMs = opts.coalesceMs ?? DEFAULT_COALESCE_MS;
 	const maxBuffered = opts.maxClientBufferedBytes ?? DEFAULT_MAX_BUFFERED;
 
@@ -94,7 +94,16 @@ export function startBridge(roster: Roster, opts: BridgeOptions = {}): Promise<B
 	const dir = dirname(socketPath);
 	const dirPreExisted = existsSync(dir);
 	mkdirSync(dir, { recursive: true });
-	chmodSync(dir, 0o700);
+	if (dirPreExisted) {
+		// Caller-owned dir: never chmod it; require it already be owner-only.
+		if ((statSync(dir).mode & 0o777) !== 0o700) {
+			throw new Error(
+				`bridge socket dir must be mode 0700 (found 0${(statSync(dir).mode & 0o777).toString(8)}): ${dir}`,
+			);
+		}
+	} else {
+		chmodSync(dir, 0o700);
+	}
 
 	const clients = new Set<BridgeSocket>();
 	const pendingUpserts = new Map<string, WorkerSnapshot>();
@@ -127,7 +136,10 @@ export function startBridge(roster: Roster, opts: BridgeOptions = {}): Promise<B
 			process.removeListener("SIGINT", signalHandlers.SIGINT);
 			process.removeListener("SIGTERM", signalHandlers.SIGTERM);
 			process.removeListener("exit", onExit);
-			process.kill(process.pid, sig);
+			// Re-raise only when no other listener remains: with a host or
+			// second-bridge handler present, termination is theirs to decide —
+			// 'exit' above already ran our cleanup.
+			if (process.listenerCount(sig) === 0) process.kill(process.pid, sig);
 		};
 	}
 	function onExit(): void {
@@ -178,7 +190,7 @@ export function startBridge(roster: Roster, opts: BridgeOptions = {}): Promise<B
 			dropClient(socket, state);
 			return;
 		}
-		state.pendingBytes += line.length - Math.max(0, written);
+		state.pendingBytes += Buffer.byteLength(line) - Math.max(0, written);
 		if (state.pendingBytes > maxBuffered) dropClient(socket, state);
 	}
 
@@ -255,6 +267,7 @@ export function startBridge(roster: Roster, opts: BridgeOptions = {}): Promise<B
 
 	// --- roster wiring ---------------------------------------------------------
 	roster.onChange((w) => {
+		if (closed) return;
 		pendingUpserts.set(w.id, w);
 		if (coalesceTimer === null) {
 			coalesceTimer = setTimeout(flushUpserts, coalesceMs);
@@ -262,6 +275,7 @@ export function startBridge(roster: Roster, opts: BridgeOptions = {}): Promise<B
 		maybeTranscriptRef(w);
 	});
 	roster.onSignal((s) => {
+		if (closed) return;
 		if (s.type === "worker.finished") {
 			flushWorker(s.id); // final state goes out before the removal, if pending
 			maybeTranscriptRef(s.worker);
@@ -289,7 +303,9 @@ export function startBridge(roster: Roster, opts: BridgeOptions = {}): Promise<B
 			},
 			data(socket: BridgeSocket, data: Buffer) {
 				const state = socket.data;
-				if (state.dead || closed) return;
+				// v1 is observation-only: post-handshake input is discarded, not
+				// buffered (a chatty viewer must never grow host memory).
+				if (state.authed || state.dead || closed) return;
 				state.buffer += state.decoder.write(data);
 				let nl = state.buffer.indexOf("\n");
 				while (nl >= 0 && !state.authed && !state.dead) {
@@ -309,8 +325,7 @@ export function startBridge(roster: Roster, opts: BridgeOptions = {}): Promise<B
 					sendHello(socket, state, decoded.message.session);
 					nl = state.buffer.indexOf("\n");
 				}
-				// post-handshake input is ignored in v1 (observation-only)
-				if (!state.authed && state.buffer.length > HANDSHAKE_BUFFER_LIMIT) {
+				if (state.buffer.length > HANDSHAKE_BUFFER_LIMIT) {
 					dropClient(socket, state);
 				}
 			},
