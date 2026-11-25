@@ -237,10 +237,10 @@ const REQS: Requirement[] = [
 		manual: [
 			{
 				capture: "docs/analysis/e2e-evidence.md §Manual-evidence steps",
-				what: "E2E step s3 (/lens split live) — STILL manual after owner-witnessed Run D 2026-11-25: `herdr pane get` JSON Parse error (Unexpected EOF), env-coupled flake, retry-once did not clear; /lens registration live-confirmed via command palette",
+				what: "E2E step s3 (/lens split live) — STILL manual after owner-witnessed Runs D/E/E2 2026-11-25: Run D/E pane send-text JSON EOF flake (fixed: send-text → herdrProc, read retry); Run E2 uncovered the input-clear bug (/lens/lens split typed → submitted as prompt) — ctrl+u fix + scope-content detection landed, verified by live manual probe (w1A:t4 scoped pane rendered 'scope: worker alpha-responder [connected]'), full live witness still outstanding",
 			},
 		],
-		witnessPending: "E2E s3 /lens split — env-coupled pane-get JSON EOF flake in Runs C and D",
+		witnessPending: "E2E s3 /lens split — typed-command input-clear + pane-list null-title bugs fixed; live witness pending post-E2",
 	},
 	{
 		id: "FR-07",
@@ -328,10 +328,10 @@ const REQS: Requirement[] = [
 		manual: [
 			{
 				capture: "docs/analysis/e2e-evidence.md §Manual-evidence steps",
-				what: "E2E step s4 (OMP restart → auto-open + not-live history) — STILL manual after owner-witnessed Run D 2026-11-25: local-build (-e) session-bind gap (agent_session never bound) → viewer-reconnect timeout 30s×2; tab reuse/rebind DID pass live",
+				what: "E2E step s4 (OMP restart → auto-open + not-live history) — STILL manual after owner-witnessed Runs D/E/E2 2026-11-25: local-build (-e) session-bind gap (agent_session never bound) → viewer-reconnect timeout 30s×2; tab reuse/rebind DID pass live in every run",
 			},
 		],
-		witnessPending: "E2E s4 restart→history — env-coupled local-build session-bind gap in Runs C and D",
+		witnessPending: "E2E s4 restart→history — env-coupled local-build session-bind gap in Runs C/D/E/E2",
 	},
 	{
 		id: "FR-10",
@@ -455,10 +455,9 @@ const REQS: Requirement[] = [
 			},
 			{
 				capture: "docs/analysis/e2e-evidence.md §Manual-evidence steps",
-				what: "E2E step s5 (cross-workspace spawn focus) — STILL manual after owner-witnessed Run D 2026-11-25: spawn-lands timeout 150s×2, correlated with the s4 local-build session-bind gap (agent_session=undefined)",
+				what: "E2E step s5 (cross-workspace spawn focus) — LIVE-WITNESSED in owner-witnessed Run E 2026-11-25 (w19): spawn landed while focus on wN, 'focus stayed wN:t1 (wN)' (FR-13). Run E2 re-run env-coupled (OMP quota exhausted mid-run — spawn prompt never dispatched)",
 			},
 		],
-		witnessPending: "E2E s5 cross-workspace focus — env-coupled spawn timeout in Runs C and D (likely same bind-gap root cause)",
 	},
 	{
 		id: "FR-14",
@@ -879,7 +878,7 @@ const OPEN_ITEMS: { id: string; item: string; ownerAction: string; source: strin
 	{
 		id: "OI-2",
 		item: "E2E live lifecycle steps s2–s5 (close→reopen, /lens split, restart→history, cross-workspace focus)",
-		ownerAction: "PARTIALLY RESOLVED 2026-11-25 — owner-witnessed Run D live-proved s1/s2 (FR-05 cleared); s3 (pane-get JSON EOF), s4 (local-build bind gap), s5 (spawn timeout, correlated) remain env-coupled manual — rerun `RUN_E2E_LIVE=1 bash scripts/run-e2e.sh` or convert to recorded limitations at sign-off",
+		ownerAction: "PARTIALLY RESOLVED 2026-11-25 — owner-witnessed Runs D/E/E2 live-proved s1/s2/s5 (FR-05 + FR-13 cleared); s3 (/lens split: send-text EOF fixed → input-clear + null-title bugs found and fixed, live witness still pending), s4 (local-build bind gap) remain env-coupled manual — rerun `RUN_E2E_LIVE=1 bash scripts/run-e2e.sh` or convert to recorded limitations at sign-off",
 		source: "docs/analysis/e2e-evidence.md §Manual-evidence steps; progress.md (P6-6 CONDITION)",
 	},
 	{
