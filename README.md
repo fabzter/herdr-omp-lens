@@ -113,14 +113,14 @@ the full design.
 
 ## Verified commands
 
-Every command below was executed on 2026-11-25 at commit `7e8e131` (OMP 19.1.1 / Herdr 0.9.5) and
+Every command below was executed on 2026-11-25 at commit `515d91dc` (OMP 19.1.1 / Herdr 0.9.5) and
 its output is quoted verbatim. Regenerate the evidence report with `bun scripts/gen-dod-report.ts`.
 
 ```console
 $ bun test
  460 pass
  0 fail
- 1659 expect() calls
+ 1658 expect() calls
 Ran 460 tests across 35 files. [3.93s]
 
 $ bun run typecheck          # tsc --noEmit — clean, no output
