@@ -5,10 +5,12 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Socket, SocketListener } from "bun";
 import { resolveViewerCommand } from "../../src/extension/resolve";
+import type { WorkerSnapshot } from "../../src/protocol/types";
 import {
 	handleKey,
 	keyFor,
 	READONLY_ACTIONS,
+	type RunViewerDeps,
 	resolveViewerConfig,
 	runViewer,
 	viewerEnv,
