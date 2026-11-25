@@ -13,7 +13,7 @@
 import { open, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import type { WorkerSnapshot } from "../../protocol/types";
+import type { WorkerSnapshot, WorkerStatus } from "../../protocol/types";
 import type { HistorySource } from "./index";
 
 /** <ISO-timestamp>_<uuid> session dir name. */
@@ -86,7 +86,41 @@ function isDirectWorker(parentSession: string, projectDir: string): boolean {
 	return PARENT_SESSION_FILE_RE.test(basename(parentSession));
 }
 
-function mapTranscriptToSnapshot(
+/**
+ * P5-R4 honest status mapping. Scans raw JSONL lines from the end for the
+ * verified terminal marker
+ * `{type:"custom",customType:"session_exit",data:{kind,reason,recordedAt}}`:
+ * `kind:"normal"` -> completed, `kind:"signal"` -> aborted, `kind:"error"`/
+ * `"failed"` -> failed, no marker -> aborted (the session ended mid-run).
+ * Torn/malformed lines are skipped; the LAST terminal marker wins. Never
+ * throws (NFR-02).
+ */
+export function mapTerminalStatus(lines: string[]): WorkerStatus {
+	for (const line of [...lines].reverse()) {
+		const trimmed = line.trim();
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(trimmed);
+		} catch {
+			continue; // torn trailing line / noise — not a marker, keep looking
+		}
+		if (typeof parsed !== "object" || parsed === null) continue;
+		if (!("type" in parsed) || parsed.type !== "custom") continue;
+		if (!("customType" in parsed) || parsed.customType !== "session_exit") {
+			continue;
+		}
+		if (!("data" in parsed)) return "aborted";
+		const data = parsed.data;
+		if (typeof data !== "object" || data === null) return "aborted";
+		if (!("kind" in data)) return "aborted";
+		if (data.kind === "normal") return "completed";
+		if (data.kind === "error" || data.kind === "failed") return "failed";
+		return "aborted"; // "signal" and unrecognised kinds
+	}
+	return "aborted";
+}
+
+export function mapTranscriptToSnapshot(
 	workerId: string,
 	sessionFile: string,
 	lines: string[],
@@ -126,8 +160,7 @@ function mapTranscriptToSnapshot(
 	const snapshot: WorkerSnapshot = {
 		id: workerId,
 		agent,
-		// Task 1 default; real terminal-marker mapping is Task 2 (P5-R4).
-		status: "aborted",
+		status: mapTerminalStatus(lines), // P5-R4 honest terminal-marker mapping
 		sessionFile,
 		historical: true,
 		updatedAt: mtimeMs,

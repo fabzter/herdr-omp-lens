@@ -24,9 +24,12 @@ export interface HistoryScan {
 export interface HistorySource {
 	scan(cwd: string, opts?: HistoryScanOptions): Promise<HistoryScan>;
 }
+export { mergeLiveAndHistorical, transcriptRefFor } from "./merge";
 export {
 	boundedReadFile,
 	createHistorySource,
 	encodeCwdSlug,
 	type HistoryDeps,
+	mapTerminalStatus,
+	mapTranscriptToSnapshot,
 } from "./scan";
