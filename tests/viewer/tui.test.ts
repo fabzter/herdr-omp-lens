@@ -1,0 +1,108 @@
+import { describe, expect, test } from "bun:test";
+import type { WorkerSnapshot } from "../../src/protocol/types";
+import type { ViewerState } from "../../src/viewer/state";
+import { initialViewerState } from "../../src/viewer/state";
+import { renderTuiScreen, STACK_BELOW } from "../../src/viewer/tui";
+
+function snap(id: string, over: Partial<WorkerSnapshot> = {}): WorkerSnapshot {
+	return { id, agent: "task", status: "running", updatedAt: 1_000, ...over };
+}
+
+function stateWith(workers: WorkerSnapshot[], init: Partial<ViewerState> = {}): ViewerState {
+	return initialViewerState({
+		session: "sess-1",
+		live: true,
+		workers: new Map(workers.map((w) => [w.id, w])),
+		...init,
+	});
+}
+
+/** ANSI-free copy for substring assertions. */
+function plain(text: string): string {
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: strip SGR/OSC sequences on purpose
+	return text.replace(/\x1b\[[0-9;]*m/g, "").replace(/\x1b\][^\x07]*\x07/g, "");
+}
+
+describe("renderTuiScreen — E2E token contract (unchanged from render.ts)", () => {
+	test("header, roster sections, scope line and footer tokens all survive the pi-tui layout", () => {
+		const s = stateWith([
+			snap("a", { name: "alpha" }),
+			snap("b", { status: "completed" }),
+			snap("c", { name: "ghost", historical: true }),
+		]);
+		const text = plain(renderTuiScreen(s, { width: 140 }));
+		expect(text).toContain("omp lens — session sess-1 [connected]");
+		expect(text).toContain("workers (1):");
+		expect(text).toContain("finished (1) — press e to expand");
+		expect(text).toContain("history (1):");
+		expect(text).toContain("[not-live]");
+		expect(text).toContain("j/k select · e finished · t thinking off · r refresh · q quit");
+	});
+
+	test("scoped mode keeps `scope: worker <id>` and the not-found line", () => {
+		const s = stateWith([snap("a")], { scope: { workerId: "a" } });
+		const text = plain(renderTuiScreen(s, { width: 140 }));
+		expect(text).toContain("scope: worker a");
+		const missing = stateWith([snap("a")], { scope: { workerId: "zzz" } });
+		expect(plain(renderTuiScreen(missing, { width: 140 }))).toContain("worker zzz: not found");
+	});
+});
+
+describe("renderTuiScreen — two-column layout", () => {
+	test("selected worker's detail sits right of the │ separator on the same rows", () => {
+		const s = stateWith([snap("a", { name: "alpha" }), snap("b", { name: "bravo" })], {
+			selectedId: "b",
+		});
+		const lines = renderTuiScreen(s, { width: 140 }).split("\n");
+		const sep = lines.filter((l) => l.includes("│"));
+		expect(sep.length).toBeGreaterThan(0);
+		const detailRow = sep.find((l) => plain(l).includes("worker: bravo"));
+		expect(detailRow).toBeDefined();
+	});
+
+	test("selection marker lands on the left column of the selected row", () => {
+		const s = stateWith([snap("a", { name: "alpha" }), snap("b", { name: "bravo" })], {
+			selectedId: "b",
+		});
+		const lines = renderTuiScreen(s, { width: 140 }).split("\n");
+		const row = lines.find((l) => plain(l).includes("bravo") && l.startsWith(">"));
+		expect(row).toBeDefined();
+	});
+
+	test("below STACK_BELOW the roster stacks above the detail — no separator", () => {
+		const s = stateWith([snap("a", { name: "alpha" })], { selectedId: "a" });
+		const lines = renderTuiScreen(s, { width: STACK_BELOW - 10 }).split("\n");
+		expect(lines.every((l) => !l.includes("│"))).toBe(true);
+		const text = plain(lines.join("\n"));
+		expect(text).toContain("workers (1):");
+		expect(text).toContain("worker: alpha");
+	});
+});
+
+describe("renderTuiScreen — transcript + status mapping", () => {
+	test("transcript text appears in the detail column; errors surface verbatim", () => {
+		const s = stateWith([snap("a", { name: "alpha", sessionFile: "/tmp/a.jsonl" })], {
+			selectedId: "a",
+		});
+		const ok = plain(
+			renderTuiScreen(s, { width: 140, transcript: { workerId: "a", text: "line one\nline two" } }),
+		);
+		expect(ok).toContain("── transcript ──");
+		expect(ok).toContain("line one");
+		const bad = plain(renderTuiScreen(s, { width: 140, transcriptError: "boom" }));
+		expect(bad).toContain("render error: boom");
+	});
+
+	test("worker statuses map onto agent-painter statuses (queued→pending, completed→done)", () => {
+		const s = stateWith([snap("a"), snap("b", { status: "completed" })], {
+			finishedCollapsed: false,
+			selectedId: "a",
+		});
+		const lines = renderTuiScreen(s, { width: 140 }).split("\n").map(plain);
+		expect(lines.some((l) => l.includes("finished (1):"))).toBe(true);
+		// completed maps to `done`: the painter draws the success glyph on b's row
+		const finishedRow = lines.find((l) => l.includes(" b ⟦task⟧"));
+		expect(finishedRow).toBeDefined();
+		expect(finishedRow).toContain("✔");
+	});
+});
