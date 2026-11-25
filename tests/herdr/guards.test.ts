@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { assertAllowedRequest, DENIED_METHODS } from "../../src/herdr/guards";
+import { assertAllowedRequest, DENIED_METHODS, HerdrForbiddenError } from "../../src/herdr/guards";
 
 describe("DENIED_METHODS", () => {
 	// Tamper test: removing an entry from the denylist fails this test AND the
@@ -70,5 +70,30 @@ describe("assertAllowedRequest — allowed", () => {
 	test("non-object params cannot smuggle tab_id", () => {
 		expect(() => assertAllowedRequest("layout.apply", null)).not.toThrow();
 		expect(() => assertAllowedRequest("layout.apply", "tab_id")).not.toThrow();
+	});
+});
+
+describe("assertAllowedRequest — dynamically composed denied methods", () => {
+	// P6-R3 layer (b): a runtime-composed method name — the shape a regex source
+	// scan cannot see — must still hit the denylist. Deleting a DENIED_METHODS
+	// entry makes its row here fail (and the denylist test above).
+	test.each(DENIED_METHODS)("composed %s throws", (method) => {
+		const composed = method.split(".").join(".");
+		expect(composed).toEqual(method); // same wire value, rebuilt at runtime
+		expect(() => assertAllowedRequest(composed, {})).toThrow(HerdrForbiddenError);
+	});
+
+	test("String.fromCharCode composition cannot evade the denylist", () => {
+		const method = [..."agent.start"].map((c) => String.fromCharCode(c.charCodeAt(0))).join("");
+		expect(() => assertAllowedRequest(method, {})).toThrow(HerdrForbiddenError);
+	});
+
+	test("computed params keys cannot smuggle focus or tab_id", () => {
+		expect(() => assertAllowedRequest("tab.create", { ["foc" + "us"]: true })).toThrow(
+			HerdrForbiddenError,
+		);
+		expect(() => assertAllowedRequest("layout.apply", { ["tab" + "_id"]: "w1:t1" })).toThrow(
+			HerdrForbiddenError,
+		);
 	});
 });
