@@ -132,6 +132,32 @@ const FORBIDDEN_FIXTURES: { name: string; rule: string; code: string }[] = [
 		rule: "raw-frame-write",
 		code: `s.write(JSON.stringify({ id: "1", method: "pane.get", params: {} }) + "\\n");`,
 	},
+	// --- fix round 1: review findings -----------------------------------------
+	{
+		name: "bare method forward outside the guarded plumbing files",
+		rule: "non-literal-method",
+		code: `export const f = (t: HerdrTransport, method: string) => t.request(method, {});`,
+	},
+	{
+		name: "focus:false initializer overridden by a later mutation",
+		rule: "missing-focus-false",
+		code: `const p = { workspace_id: "w1", focus: false };\np.focus = true;\nawait guardedRequest(t, "tab.create", p);`,
+	},
+	{
+		name: "focus overridden to a truthy non-boolean value",
+		rule: "missing-focus-false",
+		code: `const p = { target_pane_id: "w1:p1", focus: false };\np.focus = 1;\nawait guardedRequest(t, "pane.split", p);`,
+	},
+	{
+		name: "herdr CLI command composed by string concatenation",
+		rule: "cli-composed",
+		code: `const cmd = "herdr " + "tab create --label x";`,
+	},
+	{
+		name: "herdr CLI command built in a template literal",
+		rule: "cli-composed",
+		code: "const cmd = `herdr $" + "{verb} split`;",
+	},
 ];
 
 describe("fixture sabotage: every forbidden construction is caught", () => {

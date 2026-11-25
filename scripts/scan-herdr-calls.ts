@@ -15,7 +15,10 @@
  *    `method` forward inside guardedRequest itself is allowed
  *  - openStream(path, "<method>", params, handlers) — lifecycle seam, literal
  *  - openEventStream / socketRequest          — transport internals; a bare
- *    `method` forward is allowed because the caller is guarded upstream
+ *    `method` forward is allowed ONLY inside the guarded plumbing files
+ *    (adapter.ts/transport.ts) — anywhere else is unguarded upstream and is
+ *    flagged (fix R1: a method-parameter forward elsewhere bypasses both
+ *    layers, e.g. f(t, ["agent","start"].join("."))
  *  - s.write(`${JSON.stringify({ id, method, params })}\n`) — frame emission
  *    inside transport.ts only
  *
@@ -259,11 +262,38 @@ function push(
 }
 
 /**
+ * Last-write-wins value of the `focus` key in resolved params text. Mutation
+ * lines appended by resolveParams are normalized to `focus: <value>`, so the
+ * LAST `focus:` match is the effective value — a `p.focus = true` after
+ * `focus: false` is caught here even though the initializer looked safe.
+ * Returns null when no focus key exists.
+ */
+function lastFocusValue(text: string): string | null {
+	let value: string | null = null;
+	for (const m of text.matchAll(/\bfocus\s*:\s*([^,\n}]+)/g)) {
+		value = (m[1] as string).trim();
+	}
+	return value;
+}
+
+/**
+ * Bare-`method` forwarding is honored only inside these files — the guarded
+ * plumbing chain: adapter.ts (t.request inside guardedRequest, which calls
+ * assertAllowedRequest first) and transport.ts (socketRequest/openEventStream,
+ * invoked only through the guarded seams). The same forward anywhere else has
+ * no upstream guard, so it is flagged instead (fail closed).
+ */
+const GUARDED_FORWARD_FILES: Record<string, true> = {
+	"src/herdr/adapter.ts": true,
+	"src/herdr/transport.ts": true,
+};
+
+/**
  * Wire seams whose method argument must be a literal — except where
  * `forwardOk` marks internal plumbing that may forward the enclosing
- * function's `method` parameter verbatim (that caller is itself checked by
- * this scan or by the runtime guard). guardedRequest and openStream are the
- * public seams: they always require a literal so the scan sees every method.
+ * function's `method` parameter verbatim, and only inside
+ * GUARDED_FORWARD_FILES. guardedRequest and openStream are the public seams:
+ * they always require a literal so the scan sees every method.
  * methodIdx/paramsIdx index the call's arguments.
  */
 const WIRE_SEAMS: { re: RegExp; methodIdx: number; paramsIdx: number; forwardOk: boolean }[] = [
@@ -289,12 +319,13 @@ function checkCall(
 	code: string,
 	callIndex: number,
 	forwardOk: boolean,
+	guardedFile: boolean,
 	methodArg: string,
 	params: ResolvedParams,
 ): void {
 	const method = literalContent(methodArg);
 	if (method === null) {
-		if (!(forwardOk && methodArg.trim() === "method")) {
+		if (!(forwardOk && guardedFile && methodArg.trim() === "method")) {
 			push(
 				findings,
 				"non-literal-method",
@@ -355,7 +386,7 @@ function checkCall(
 			break;
 		case "tab.create":
 		case "pane.split":
-			if (!/focus\s*:\s*false\b/.test(params.text)) {
+			if (lastFocusValue(params.text) !== "false") {
 				push(
 					findings,
 					"missing-focus-false",
@@ -472,6 +503,33 @@ export function scanSources(files: SourceFile[], options: ScanOptions = {}): Sca
 					);
 				}
 			}
+			// Composed CLI commands fail closed (fix R1): a literal whose content
+			// STARTS with `herdr ` (command position) glued by `+`, a
+			// `herdr ${…}`/`herdr <verb>…${…}` template, or a bare "herdr" argv
+			// word builds shell text assertAllowedRequest cannot inspect — the
+			// author must keep the verb in one static literal the scan can see.
+			// Descriptive text merely containing "herdr" and error/message
+			// contexts (throw/new Error/console/notice) are exempt.
+			if (
+				/(?:["'`]herdr\s[^"'`]*["'`]\s*\+|\+\s*["'`]herdr\s)/.test(line)
+			) {
+				add("cli-composed", "herdr CLI fragment concatenated with + (unscannable composition)");
+			}
+			const errorCtx = /\bnew\s+\w*Error|\bthrow\b|\bconsole\.|\bnotice\b|\bsetStatus\b/.test(
+				line,
+			);
+			if (!errorCtx && /`[^`]*\bherdr\s*\$\{/.test(line)) {
+				add("cli-composed", "herdr CLI fragment inside a template literal (unscannable composition)");
+			}
+			if (
+				!errorCtx &&
+				/`[^`]*\bherdr\s+(?:tab|pane|agent|workspace|layout)\b[^`]*\$\{/.test(line)
+			) {
+				add("cli-composed", "herdr CLI command template with interpolation (unscannable)");
+			}
+			if (/["'`]herdr\s*["'`]/.test(line)) {
+				add("cli-composed", `bare "herdr" literal (argv word without its verb in the same literal)`);
+			}
 			if (/\.write\s*\([^)]*JSON\.stringify/.test(line) && file.path !== FRAME_WRITE_FILE) {
 				add(
 					"raw-frame-write",
@@ -503,7 +561,16 @@ export function scanSources(files: SourceFile[], options: ScanOptions = {}): Sca
 				const methodArg = args[seam.methodIdx];
 				if (methodArg === undefined) continue;
 				const params = resolveParams(code, args, seam.paramsIdx, m.index);
-				checkCall(findings, file.path, code, m.index, seam.forwardOk, methodArg, params);
+				checkCall(
+					findings,
+					file.path,
+					code,
+					m.index,
+					seam.forwardOk,
+					GUARDED_FORWARD_FILES[file.path] === true,
+					methodArg,
+					params,
+				);
 			}
 		}
 	}
