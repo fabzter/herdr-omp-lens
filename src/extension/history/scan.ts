@@ -247,14 +247,20 @@ export function createHistorySource(deps: HistoryDeps = {}): HistorySource {
 			}
 
 			// Newest session dirs first (ISO prefix sorts chronologically).
-			const sessionDirs = entries
+			const filteredDirs = entries
 				.filter((e) => SESSION_DIR_RE.test(e))
 				.sort()
-				.reverse()
-				.slice(0, maxSessions);
+				.reverse();
+			// A scan that stopped early has not CONFIRMED the fate of unvisited
+			// files — pruning on `seen` would evict live entries (P5-R8 cache).
+			let truncated = filteredDirs.length > maxSessions;
+			const sessionDirs = filteredDirs.slice(0, maxSessions);
 
 			for (const sessionDirName of sessionDirs) {
-				if (workers.length >= maxWorkers) break;
+				if (workers.length >= maxWorkers) {
+					truncated = true;
+					break;
+				}
 				const sessionDir = join(projectDir, sessionDirName);
 				try {
 					const s = await statSeam(sessionDir);
@@ -273,7 +279,10 @@ export function createHistorySource(deps: HistoryDeps = {}): HistorySource {
 				}
 
 				for (const child of children.sort()) {
-					if (workers.length >= maxWorkers) break;
+					if (workers.length >= maxWorkers) {
+						truncated = true;
+						break;
+					}
 					if (child.startsWith(".")) continue; // dotfiles
 					if (!child.endsWith(".jsonl")) continue; // *.md, *.lock.os, noise
 					const sessionFile = join(sessionDir, child);
@@ -322,12 +331,13 @@ export function createHistorySource(deps: HistoryDeps = {}): HistorySource {
 									s2.mtimeMs !== mtimeMs ||
 									(fileSize !== undefined && s2.size !== undefined && s2.size > fileSize)
 								) {
+									// Adopt s2's mtime/size ONLY after the re-read
+									// succeeds: a failed retry caches the torn head
+									// under the OLD key so the next scan reparses.
+									const reread = await readFileSeam(sessionFile, "utf8", maxFileBytes);
 									mtimeMs = s2.mtimeMs;
 									fileSize = s2.size;
-									content = await readFileSeam(sessionFile, "utf8", maxFileBytes);
-									if (content.length > maxFileBytes) {
-										content = content.slice(0, maxFileBytes);
-									}
+									content = reread.length > maxFileBytes ? reread.slice(0, maxFileBytes) : reread;
 								}
 							} catch {
 								// Still torn or unstat-able — keep the head window; the
@@ -366,9 +376,13 @@ export function createHistorySource(deps: HistoryDeps = {}): HistorySource {
 					if (snapshot !== null) workers.push(snapshot);
 				}
 			}
-			// Prune cache entries for this project tree whose files vanished.
-			for (const key of cache.keys()) {
-				if (key.startsWith(`${projectDir}/`) && !seen.has(key)) cache.delete(key);
+			// Prune cache entries for this project tree whose files vanished —
+			// only when the scan visited every candidate it enumerated (a cap-
+			// truncated `seen` cannot distinguish vanished from unvisited).
+			if (!truncated) {
+				for (const key of cache.keys()) {
+					if (key.startsWith(`${projectDir}/`) && !seen.has(key)) cache.delete(key);
+				}
 			}
 			return { workers, warnings, scannedAt };
 		},

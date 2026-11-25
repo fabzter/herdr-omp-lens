@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, utimesSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -103,6 +103,70 @@ describe("bounded scan (P5-R8 / NFR-03)", () => {
 		for (const [file, n] of reads) {
 			if (file !== w2file) expect(n).toBe(1); // untouched files stayed cached
 		}
+	});
+
+	test("cap-truncated scan (maxWorkers) does not prune unvisited cache entries", async () => {
+		const tree = makeLargeTree(3); // newest-first visit order: w2, w1, w0
+		const reads = new Map<string, number>();
+		const src = createHistorySource({
+			sessionsRoot: tree.sessionsRoot,
+			readFile: (p) => {
+				reads.set(p, (reads.get(p) ?? 0) + 1);
+				return readFile(p, "utf8");
+			},
+		});
+		await src.scan(PROJECT_CWD, { maxSessions: 20, maxWorkers: 100 }); // seed the cache
+		await src.scan(PROJECT_CWD, { maxSessions: 20, maxWorkers: 1 }); // visits w2 only
+		const third = await src.scan(PROJECT_CWD, { maxSessions: 20, maxWorkers: 100 });
+		expect(third.workers).toHaveLength(3);
+		for (const [, n] of reads) expect(n).toBe(1); // unvisited w0/w1 stayed cached
+	});
+
+	test("cap-truncated scan (maxSessions) does not prune off-window cache entries", async () => {
+		const tree = makeLargeTree(3);
+		const reads = new Map<string, number>();
+		const src = createHistorySource({
+			sessionsRoot: tree.sessionsRoot,
+			readFile: (p) => {
+				reads.set(p, (reads.get(p) ?? 0) + 1);
+				return readFile(p, "utf8");
+			},
+		});
+		await src.scan(PROJECT_CWD, { maxSessions: 3 });
+		await src.scan(PROJECT_CWD, { maxSessions: 1 }); // w0/w1 dirs leave the window
+		await src.scan(PROJECT_CWD, { maxSessions: 3 });
+		for (const [, n] of reads) expect(n).toBe(1);
+	});
+
+	test("untruncated scan still prunes entries for vanished files", async () => {
+		const tree = makeLargeTree(2); // w1 newest, w0 oldest
+		const src = createHistorySource({ sessionsRoot: tree.sessionsRoot });
+		const first = await src.scan(PROJECT_CWD);
+		expect(first.workers).toHaveLength(2);
+		const w0file = first.workers.find((w) => w.id === "w0")?.sessionFile;
+		const n0 = tree.names[0];
+		if (w0file === undefined || n0 === undefined) throw new Error("w0 must be scanned");
+		rmSync(w0file);
+		await src.scan(PROJECT_CWD); // w0 gone -> its cache entry pruned
+		// Recreate w0 with IDENTICAL mtime but a different model: a stale cache
+		// would still serve "devin/swe-2"; a pruned entry reparses the file.
+		writeFileSync(
+			w0file,
+			`${[
+				JSON.stringify({
+					type: "session",
+					version: 3,
+					id: "w0",
+					cwd: PROJECT_CWD,
+					parentSession: join(tree.projectDir, `${n0}.jsonl`),
+				}),
+				JSON.stringify({ type: "model_change", model: "changed-model", role: "subagent:w0" }),
+			].join("\n")}\n`,
+		);
+		const d = new Date(1700000000000);
+		utimesSync(w0file, d, d);
+		const third = await src.scan(PROJECT_CWD);
+		expect(third.workers.find((w) => w.id === "w0")?.model).toBe("changed-model");
 	});
 });
 
@@ -212,5 +276,56 @@ describe("torn-read tolerance (P5-R7 / U-OMP-7)", () => {
 		const scan = await src.scan(PROJECT_CWD);
 		expect(reads).toBe(2); // initial + exactly one retry, never a loop
 		expect(scan.workers.map((x) => x.id)).toEqual(["wstorm"]); // still surfaced
+	});
+
+	test("failed retry re-read does not poison the cache under the new mtime", async () => {
+		const { sessionsRoot, projectDir } = makeLargeTree(0);
+		const dir = join(projectDir, sessionName(0));
+		mkdirSync(dir, { recursive: true });
+		const w = addWorker(dir, "wstale", join(projectDir, `${sessionName(0)}.jsonl`), { torn: true });
+		const full = await readFile(w.sessionFile, "utf8");
+		const exitLine = `${JSON.stringify({
+			type: "custom",
+			customType: "session_exit",
+			data: { kind: "normal", reason: "dispose", recordedAt: 1 },
+		})}\n`;
+		const stamp = 1700000000000 + 60_000;
+		let stats = 0;
+		let reads = 0;
+		const src = createHistorySource({
+			sessionsRoot,
+			stat: async (p) => {
+				const s = await stat(p);
+				if (p === w.sessionFile) {
+					stats++;
+					// Only the retry re-stat (stats===2) reports the grown file;
+					// later scans see the REAL stat — pre-fix the poisoned key
+					// (s2.mtimeMs) then equals the rewritten file's mtime exactly.
+					return {
+						mtimeMs: s.mtimeMs + (stats === 2 ? 60_000 : 0),
+						size: s.size + (stats === 2 ? 512 : 0),
+						isDirectory: () => false,
+					};
+				}
+				return s;
+			},
+			readFile: async (p) => {
+				if (p === w.sessionFile) {
+					reads++;
+					if (reads === 2) throw new Error("EMFILE: too many open files"); // retry read fails
+				}
+				return readFile(p, "utf8");
+			},
+		});
+		const first = await src.scan(PROJECT_CWD);
+		expect(first.workers.find((x) => x.id === "wstale")?.status).toBe("aborted"); // torn head, no marker
+		expect(reads).toBe(2);
+		// The flush lands — stamped at exactly the mtime s2 reported.
+		writeFileSync(w.sessionFile, `${full}${exitLine}`);
+		const d = new Date(stamp);
+		utimesSync(w.sessionFile, d, d);
+		const second = await src.scan(PROJECT_CWD);
+		expect(reads).toBe(3); // cache keyed on the OLD mtime -> reparse
+		expect(second.workers.find((x) => x.id === "wstale")?.status).toBe("completed");
 	});
 });
