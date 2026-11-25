@@ -62,13 +62,13 @@ export function inspector(w: WorkerSnapshot): string[] {
 	return lines;
 }
 
-interface RosterPartition {
+export interface RosterPartition {
 	live: WorkerSnapshot[];
 	finished: WorkerSnapshot[];
 	history: WorkerSnapshot[];
 }
 
-function partition(s: ViewerState): RosterPartition {
+export function partition(s: ViewerState): RosterPartition {
 	const p: RosterPartition = { live: [], finished: [], history: [] };
 	for (const w of s.workers.values()) {
 		if (w.historical === true) {
@@ -109,7 +109,7 @@ export interface RenderScreenOptions {
 	transcriptError?: string;
 }
 
-function transcriptBlock(
+export function transcriptBlock(
 	s: ViewerState,
 	worker: WorkerSnapshot,
 	opts: RenderScreenOptions,
@@ -139,7 +139,7 @@ function scopedScreen(s: ViewerState, opts: RenderScreenOptions): string[] {
 	return lines;
 }
 
-function footer(s: ViewerState): string {
+export function footer(s: ViewerState): string {
 	const thinking = s.thinkingVisible ? "on" : "off";
 	return `j/k select · e finished · t thinking ${thinking} · r refresh · q quit`;
 }

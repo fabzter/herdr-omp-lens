@@ -16,11 +16,14 @@ import { connectBridge } from "./client";
 import { renderScreen, selectableWorkerIds } from "./render";
 import { initialViewerState, type ViewerState } from "./state";
 import { renderWorkerTranscript } from "./transcript";
+import type { TuiScreenOptions } from "./tui";
 
 export interface ViewerEnv {
 	socketPath: string;
 	session: string;
 	workerId?: string;
+	/** LENS_PLAIN / --plain: force the legacy single-column renderer. */
+	plain?: boolean;
 }
 
 /** F-01 handoff: reads only LENS_* vars; null when the launch env is absent. */
@@ -30,13 +33,17 @@ export function viewerEnv(env: NodeJS.ProcessEnv): ViewerEnv | null {
 	if (socketPath === undefined || socketPath === "") return null;
 	if (session === undefined || session === "") return null;
 	const workerId = env.LENS_WORKER_ID;
-	return workerId === undefined || workerId === ""
-		? { socketPath, session }
-		: { socketPath, session, workerId };
+	const plain = env.LENS_PLAIN === "1" || env.LENS_PLAIN === "true";
+	const cfg: ViewerEnv =
+		workerId === undefined || workerId === ""
+			? { socketPath, session }
+			: { socketPath, session, workerId };
+	if (plain) cfg.plain = true;
+	return cfg;
 }
 
 const USAGE =
-	"usage: bun src/viewer/cli.ts [--worker <id>] " +
+	"usage: bun src/viewer/cli.ts [--worker <id>] [--plain] " +
 	"(env: LENS_SOCKET_PATH, LENS_SESSION[, LENS_WORKER_ID])";
 
 /**
@@ -46,9 +53,12 @@ const USAGE =
  */
 export function resolveViewerConfig(env: NodeJS.ProcessEnv, argv: string[]): ViewerEnv {
 	let workerArg: string | undefined;
+	let plainArg = false;
 	for (let i = 0; i < argv.length; i += 1) {
 		const arg = argv[i];
-		if (arg === "--worker") {
+		if (arg === "--plain") {
+			plainArg = true;
+		} else if (arg === "--worker") {
 			const value = argv[i + 1];
 			if (value === undefined || value === "" || value.startsWith("--")) {
 				throw new Error(`--worker requires an id\n${USAGE}`);
@@ -65,7 +75,9 @@ export function resolveViewerConfig(env: NodeJS.ProcessEnv, argv: string[]): Vie
 	}
 	const base = viewerEnv(env);
 	if (base === null) throw new Error(USAGE);
-	return workerArg === undefined ? base : { ...base, workerId: workerArg };
+	const cfg = workerArg === undefined ? base : { ...base, workerId: workerArg };
+	if (plainArg) cfg.plain = true;
+	return cfg;
 }
 
 /** Every action a key may trigger — the read-only vocabulary (P3-R7). */
@@ -242,6 +254,18 @@ export async function runViewer(deps: RunViewerDeps): Promise<number> {
 		deps.renderTranscript ??
 		((file: string, thinking: boolean) => renderWorkerTranscript(file, { thinking }));
 
+	// v1.1: on a real terminal the OMP-look two-column screen (pi-tui agents
+	// painter) replaces the plain renderer; --plain/LENS_PLAIN/!TTY keeps the
+	// original. Dynamic import so a broken pi-tui degrades to plain, not exit 2.
+	let tuiScreen: ((s: ViewerState, o: TuiScreenOptions) => string) | undefined;
+	if (cfg.plain !== true && process.stdout.isTTY === true) {
+		try {
+			tuiScreen = (await import("./tui")).renderTuiScreen;
+		} catch {
+			tuiScreen = undefined;
+		}
+	}
+
 	let ui: ViewerState = initialViewerState({
 		scope: cfg.workerId === undefined ? undefined : { workerId: cfg.workerId },
 	});
@@ -262,10 +286,11 @@ export async function runViewer(deps: RunViewerDeps): Promise<number> {
 			slot.text !== undefined && slot.workerId !== undefined
 				? { status, transcript: { workerId: slot.workerId, text: slot.text } }
 				: { status };
-		const text = renderScreen(
-			ui,
-			slot.error !== undefined ? { ...opts, transcriptError: slot.error } : opts,
-		);
+		const paintOpts = slot.error !== undefined ? { ...opts, transcriptError: slot.error } : opts;
+		const text =
+			tuiScreen === undefined
+				? renderScreen(ui, paintOpts)
+				: tuiScreen(ui, { ...paintOpts, width: process.stdout.columns ?? 80 });
 		deps.out.write(`${ANSI_RESET + text}\n`);
 		deps.onPaint?.(text);
 	};
