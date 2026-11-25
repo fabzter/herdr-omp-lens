@@ -97,6 +97,8 @@ export interface TopologyManager {
 	onWorkerFinished(workerId: string): void;
 	/** "roster.empty" — no-op on views; closing them is the user's call. */
 	onRosterEmpty?(): void;
+	/** Read-only `/lens` command: open the overview, no focus theft. */
+	openOverview(): Promise<void>;
 	/** D3: invoked only by the read-only `/lens split <workerId>` command. */
 	openWorkerSplit(workerId: string, dir?: "right" | "down"): Promise<{ paneId: string }>;
 	state(): TopologyState;
@@ -468,6 +470,7 @@ export function createTopologyManager(
 	return {
 		onWorkerSpawned: () => signalEnsureOpen(),
 		onHistoryPresent: () => signalEnsureOpen(),
+		openOverview: () => signalEnsureOpen(),
 
 		onWorkerFinished(workerId: string): void {
 			if (stopped) return;

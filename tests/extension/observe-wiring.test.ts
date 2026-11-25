@@ -157,6 +157,9 @@ function fakeBridgeFactory(): FakeBridge {
 			broadcast(m: Message) {
 				broadcasts.push(m);
 			},
+			viewerCount() {
+				return 0;
+			},
 			async close() {
 				fake.closed = true;
 			},
@@ -180,6 +183,9 @@ function stubObservation(overrides: Partial<Observation> = {}): Observation {
 		bridge: {
 			socketPath: "/stub/bridge.sock",
 			broadcast() {},
+			viewerCount() {
+				return 0;
+			},
 			async close() {},
 		},
 		async stop() {},
@@ -397,7 +403,7 @@ describe("lensExtension gate wiring", () => {
 
 		lensExtension(pi, deps);
 
-		expect(commands.map((c) => c.name)).toEqual(["lens"]);
+		expect(commands.map((c) => c.name)).toEqual(["lens", "lens split"]);
 		await Promise.resolve();
 		expect(seen).toHaveLength(1);
 		expect(seen[0]?.ctx.paneId).toBe("w1:p1");

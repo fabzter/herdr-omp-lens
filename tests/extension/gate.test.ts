@@ -104,6 +104,9 @@ describe("lensExtension gate", () => {
 				bridge: {
 					socketPath: "/stub/bridge.sock",
 					broadcast() {},
+					viewerCount() {
+						return 0;
+					},
 					async close() {},
 				},
 				async stop() {},
@@ -112,13 +115,14 @@ describe("lensExtension gate", () => {
 
 		lensExtension(pi, { startObservation });
 
-		expect(calls.commands).toHaveLength(1);
+		expect(calls.commands).toHaveLength(2);
 		expect(calls.commands[0]?.name).toBe("lens");
 		expect(calls.commands[0]?.handlerInvocable).toBe(true);
-		// P2-4: activation is delegated to startObservation (stubbed) — the gate
-		// itself registers only /lens; bus/hook subscriptions live in observe/.
+		// P2-4/P4-3: activation is delegated to startObservation (stubbed) — the
+		// gate registers /lens + /lens split and the session_start capture hook;
+		// bus/spawn-hook subscriptions live in observe/.
 		expect(activated).toBe(1);
-		expect(calls.hooks).toHaveLength(0);
+		expect(calls.hooks).toEqual(["session_start"]);
 		expect(calls.busSubs).toHaveLength(0);
 	});
 });

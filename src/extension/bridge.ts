@@ -36,6 +36,12 @@ export interface BridgeHandle {
 	readonly socketPath: string;
 	/** Fire-and-forget: encodes and queues the message to every authed client. */
 	broadcast(m: Message): void;
+	/**
+	 * Live authed-client count (P4-3): the topology manager's post-launch
+	 * health probe (SDD §8.3) waits for a NEW viewer on the bridge rather than
+	 * trusting `pane.get` alone. Counts completed handshakes only.
+	 */
+	viewerCount(): number;
 	/** Stop listening, drop clients, unlink the socket, remove signal handlers. */
 	close(): Promise<void>;
 }
@@ -360,6 +366,14 @@ export async function startBridge(roster: Roster, opts: BridgeOptions = {}): Pro
 
 	const handle: BridgeHandle = {
 		socketPath,
+		viewerCount: () => {
+			let count = 0;
+			for (const socket of clients) {
+				const state = socket.data;
+				if (state.authed && !state.dead) count++;
+			}
+			return count;
+		},
 		broadcast,
 		close: async () => {
 			if (closed) return;

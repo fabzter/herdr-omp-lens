@@ -9,8 +9,23 @@
  * an OMP turn is never blocked (FR-12 / F-15).
  */
 
-/** Handler for a `/`-command invocation; receives the raw argument tail. */
-export type LensCommandHandler = (args: string) => void;
+/**
+ * Structural subset of the OMP handler ctx the lens reads: session identity
+ * only (`ctx.sessionManager.getSessionId()` — RC-4's LENS_SESSION source).
+ * OMP's real `ExtensionContext`/`ExtensionCommandContext` satisfies this
+ * structurally; all members optional so partial test doubles type-check.
+ */
+export interface LensContext {
+	sessionManager?: {
+		getSessionId?(): string;
+	};
+}
+
+/**
+ * Handler for a `/`-command invocation; receives the raw argument tail plus
+ * the OMP handler ctx (session identity lives there — see LensContext).
+ */
+export type LensCommandHandler = (args: string, ctx?: LensContext) => void;
 
 /** Slash-command registration passed to `pi.registerCommand`. */
 export interface LensCommandDefinition {
@@ -19,8 +34,7 @@ export interface LensCommandDefinition {
 }
 
 /** OMP lifecycle hook handler (`pi.on`). Fire-and-forget. */
-export type LensHookHandler = (event: unknown) => void;
-
+export type LensHookHandler = (event: unknown, ctx?: LensContext) => void;
 /**
  * Undocumented event-bus surface (`pi.events`): carries the
  * `task:subagent:{lifecycle,progress,event}` channels observed in Phase 0.
