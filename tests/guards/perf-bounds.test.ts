@@ -169,8 +169,10 @@ describe("P6-R8 frame volume (F-18/D5) — flat heap + bounded lines", () => {
 				`${(heapAfter / 1048576).toFixed(1)}MiB (delta ${deltaMiB.toFixed(2)}MiB)`,
 		);
 
-		// Flat heap: churned allocations are all transient; retained state is O(1).
-		expect(deltaBytes).toBeLessThan(64 * 1024 * 1024);
+		// Flat heap: churned allocations are all transient; retained state is
+		// O(1). 8 MiB gives >16x headroom over the measured ~0.5 MiB delta while
+		// still failing any regression that retains per-frame state (~160B+/frame).
+		expect(deltaBytes).toBeLessThan(8 * 1024 * 1024);
 
 		// Bounded viewer surface — notices capped at 100, roster direct-only.
 		expect(vs.notices.length).toBeLessThanOrEqual(100);
@@ -210,6 +212,6 @@ describe("P6-R8 frame volume (F-18/D5) — flat heap + bounded lines", () => {
 		const after = process.memoryUsage().heapUsed;
 		const delta = (after - before) / (1024 * 1024);
 		console.log(`[evidence] 50k decodes on mixed junk: heap delta ${delta.toFixed(2)}MiB`);
-		expect(after - before).toBeLessThan(64 * 1024 * 1024);
+		expect(after - before).toBeLessThan(8 * 1024 * 1024);
 	});
 });

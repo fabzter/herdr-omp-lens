@@ -400,11 +400,53 @@ describe("P6-R7 socket evidence (NFR-01, FR-03)", () => {
 			.split("\n")
 			.find((l) => l.includes("unix") && l.endsWith("bridge.sock"));
 		expect(unixSocketRow).toBeDefined();
-		const tcpListeners = out.split("\n").filter((l) => l.includes("TCP") && l.includes("LISTEN"));
+
+		// TCP evidence: a SECOND lsof scoped to TCP listeners of this process —
+		// a `-U` run could never contain a TCP row, which is why the first
+		// output cannot prove "no TCP listener" on its own. lsof exits 1 when
+		// nothing matches, so the exit code is not asserted.
+		const tcpListeners = (): string[] =>
+			new TextDecoder()
+				.decode(
+					Bun.spawnSync({
+						cmd: ["lsof", "-nP", "-iTCP", "-sTCP:LISTEN", "-a", "-p", String(process.pid)],
+						stdout: "pipe",
+						stderr: "pipe",
+					}).stdout,
+				)
+				.split("\n")
+				.filter((l) => l.includes("LISTEN"));
+		const tcpBefore = tcpListeners();
 		console.log(
-			`[evidence] lsof unix row: ${unixSocketRow?.trim() ?? "none"}; TCP LISTEN rows: ${tcpListeners.length}`,
+			`[evidence] lsof unix row: ${unixSocketRow?.trim() ?? "none"}; ` +
+				`TCP LISTEN rows with bridge up: ${tcpBefore.length}`,
 		);
-		expect(tcpListeners).toHaveLength(0);
+		expect(tcpBefore).toHaveLength(0);
+
+		// Non-vacuity proof: a real TCP listener in THIS process is detected by
+		// the same probe (else the zero above is untestable), then removed.
+		const tcpListener = Bun.listen({
+			hostname: "127.0.0.1",
+			port: 0,
+			socket: {
+				open() {},
+				data() {},
+				close() {},
+				drain() {},
+				error() {},
+				connectError() {},
+			},
+		});
+		try {
+			const tcpDuring = tcpListeners();
+			console.log(
+				`[sabotage-probe] TCP LISTEN rows with a test listener bound: ${tcpDuring.length}`,
+			);
+			expect(tcpDuring.length).toBeGreaterThan(0);
+		} finally {
+			tcpListener.stop(true);
+		}
+		expect(tcpListeners()).toHaveLength(0);
 	});
 
 	test("close() unlinks the socket and removes the per-session dir", async () => {
@@ -568,6 +610,24 @@ describe("P6-R7 stalled Herdr socket (F-15: per-call timeouts → degraded)", ()
 		const src = readFileSync(resolve(import.meta.dirname, "../../src/herdr/transport.ts"), "utf8");
 		expect(src).toContain("options.connectMs ?? 2000");
 		expect(src).toContain("options.requestMs ?? 5000");
+		// value + arming + error surface: the connect timer is armed on BOTH
+		// call sites (one-shot request transport AND the events.subscribe
+		// stream); deleting either must red this pin, not just the defaults.
+		const connectArms = src.match(/connectTimer = setTimeout/g) ?? [];
+		expect(connectArms.length).toBeGreaterThanOrEqual(2);
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: pins the literal template source text in transport.ts
+		expect(src).toContain("herdr socket connect timeout after ${connectMs}ms");
+		expect(src).toContain("requestTimer = setTimeout");
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: pins the literal template source text in transport.ts
+		expect(src).toContain("herdr request timeout after ${requestMs}ms");
+
+		// Sabotage self-check: the arming pins fail on a source with the
+		// connect timers deleted.
+		const sabotaged = src.replaceAll("connectTimer = setTimeout", "/* deleted */ setTimeout");
+		expect(sabotaged).not.toContain("connectTimer = setTimeout");
+		expect(() => {
+			expect(sabotaged.match(/connectTimer = setTimeout/g) ?? []).toHaveLength(connectArms.length);
+		}).toThrow();
 	});
 
 	test("circuit-break: adapter over a stalled socket degrades the topology with one notice", async () => {
