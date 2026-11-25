@@ -697,7 +697,7 @@ const REQS: Requirement[] = [
 			},
 			{
 				capture: "README.md §Verified commands",
-				what: "every documented command executed 2026-11-25 at 7e8e131, output quoted verbatim",
+				what: "provenance re-parsed from README §Verified commands at generation time",
 			},
 		],
 	},

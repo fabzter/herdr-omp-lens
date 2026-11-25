@@ -203,6 +203,7 @@ ps -eo command | grep viewer/cli.ts # argv rooted at installed package
 # 5. teardown
 herdr agent prompt <name> "/exit"; herdr workspace close <wId>
 herdr workspace list                # identical baseline
+rm -rf /tmp/<scratch>               # disposable cwd
 ```
 
 ## 6. Gates

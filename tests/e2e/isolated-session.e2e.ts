@@ -423,9 +423,9 @@ async function paneTypeCommand(paneId: string, text: string): Promise<void> {
 }
 
 /** Spawn `herdr <args>` bounded by a SIGKILL timer — same policy as herdrJson,
- *  for raw-output commands (prompt w/o --wait, send-keys). A stalled herdr can
- *  never hang teardown (F1). */
-async function herdrProc(args: string[], label: string, timeoutMs = T.cliMs): Promise<void> {
+ *  for raw-output commands (prompt w/o --wait, send-keys, --version probe).
+ *  A stalled herdr can never hang teardown (F1). Returns stdout. */
+async function herdrProc(args: string[], label: string, timeoutMs = T.cliMs): Promise<string> {
 	const proc = Bun.spawn(["herdr", ...args], { stdout: "pipe", stderr: "pipe" });
 	const timer = setTimeout(() => {
 		try {
@@ -441,6 +441,7 @@ async function herdrProc(args: string[], label: string, timeoutMs = T.cliMs): Pr
 	]);
 	clearTimeout(timer);
 	if (code !== 0) throw new Error(`${label} → exit ${code}: ${(err || out).slice(0, 300)}`);
+	return out;
 }
 
 /** Submit text without --wait (slash commands never produce a working state). */
@@ -662,10 +663,9 @@ async function preflight(): Promise<Enumerate> {
 	mkdirSync(EVIDENCE_DIR, { recursive: true });
 	writeFileSync(E2E_CONFIG_OVERLAY, OVERLAY_YAML);
 	startEventCapture();
-	const v = await herdrJson(["--version"]).catch(async () => {
-		const p = Bun.spawn(["herdr", "--version"], { stdout: "pipe" });
-		return new Response(p.stdout).text();
-	});
+	const v = await herdrJson(["--version"]).catch(async () =>
+		herdrProc(["--version"], "herdr --version"),
+	);
 	note("setup", "environment", `herdr version probe: ${String(v).slice(0, 120)}`);
 	pass("setup", "HERDR_ENV=1", `caller pane ${process.env.HERDR_PANE_ID ?? "?"}`);
 	// Sweep stale lens-e2e-* workspaces BEFORE the baseline so a dead prior

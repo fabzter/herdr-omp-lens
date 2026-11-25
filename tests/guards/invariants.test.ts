@@ -508,6 +508,7 @@ describe("P6-R2 invariant tamper tests", () => {
 		// never as unhandled rejections that would kill the turn.
 		await settle(h);
 		await Promise.resolve();
+		expect(h.errors).toHaveLength(0);
 		expect(
 			h
 				.roster()
