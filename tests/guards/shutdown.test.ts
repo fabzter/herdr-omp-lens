@@ -1,6 +1,6 @@
 /**
  * P6-R5 / U-OMP-5 shutdown guard: OMP emits `session_shutdown` when the
- * owning session ends (verified in the installed 19.0.1 binary alongside
+ * owning session ends (verified in the installed 19.1.1 binary alongside
  * `session_start`). The lens MUST bind `stopLens` there — topology +
  * observation + bridge (socket unlink) are torn down by the session that
  * opened them, not by process-exit luck.
@@ -102,7 +102,7 @@ function emitHook(fake: FakePi, event: string, payload: unknown, ctx?: LensConte
 
 // --- fakes -----------------------------------------------------------------
 
-function fakeBridge(): BridgeHandle & { sent: Message[] } {
+function fakeBridge(closeCalls: { count: number }): BridgeHandle & { sent: Message[] } {
 	const sent: Message[] = [];
 	return {
 		socketPath: "/bridge/sess.sock",
@@ -113,7 +113,10 @@ function fakeBridge(): BridgeHandle & { sent: Message[] } {
 		viewerCount() {
 			return 0;
 		},
-		close: () => Promise.resolve(),
+		close: () => {
+			closeCalls.count++;
+			return Promise.resolve();
+		},
 	};
 }
 
@@ -145,6 +148,7 @@ function fakeTopology(): FakeTopology {
 interface Harness {
 	fake: FakePi;
 	observation: Observation;
+	bridgeCloseCalls: { count: number };
 	observationStopCalls: { count: number };
 	topo: FakeTopology;
 	topologyCreates: number;
@@ -155,18 +159,24 @@ function activate(): Harness {
 	const fake = fakePi();
 	const roster = new Roster();
 	const observationStopCalls = { count: 0 };
+	const bridgeCloseCalls = { count: 0 };
+	const bridge = fakeBridge(bridgeCloseCalls);
+	// Faithful to the real Observation: stop() tears the bridge down
+	// (socket unlink), so shutdown closure is asserted directly, not
+	// by composition.
 	const observation: Observation = {
 		roster,
-		bridge: fakeBridge(),
+		bridge,
 		stop: () => {
 			observationStopCalls.count++;
-			return Promise.resolve();
+			return bridge.close();
 		},
 	};
 	const topo = fakeTopology();
 	const harness: Harness = {
 		fake,
 		observation,
+		bridgeCloseCalls,
 		observationStopCalls,
 		topo,
 		topologyCreates: 0,
@@ -224,6 +234,7 @@ describe("session_shutdown → stopLens (P6-R5)", () => {
 		await flushTeardown();
 		expect(h.topo.stopCalls).toBe(1);
 		expect(h.observationStopCalls.count).toBe(1);
+		expect(h.bridgeCloseCalls.count).toBe(1);
 		expect(activeObservation()).toBeNull();
 	});
 
@@ -237,6 +248,7 @@ describe("session_shutdown → stopLens (P6-R5)", () => {
 		expect(h.topologyCreates).toBe(0);
 		expect(h.topo.stopCalls).toBe(0);
 		expect(h.observationStopCalls.count).toBe(1);
+		expect(h.bridgeCloseCalls.count).toBe(1);
 		expect(activeObservation()).toBeNull();
 	});
 
@@ -249,5 +261,6 @@ describe("session_shutdown → stopLens (P6-R5)", () => {
 		await flushTeardown();
 		expect(h.topo.stopCalls).toBe(1);
 		expect(h.observationStopCalls.count).toBe(1);
+		expect(h.bridgeCloseCalls.count).toBe(1);
 	});
 });

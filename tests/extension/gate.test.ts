@@ -124,5 +124,6 @@ describe("lensExtension gate", () => {
 		// subscriptions live in observe/.
 		expect(activated).toBe(1);
 		expect(calls.hooks).toEqual(["session_start", "session_shutdown"]);
+		expect(calls.busSubs).toHaveLength(0);
 	});
 });
