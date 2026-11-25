@@ -403,7 +403,7 @@ describe("lensExtension gate wiring", () => {
 
 		lensExtension(pi, deps);
 
-		expect(commands.map((c) => c.name)).toEqual(["lens", "lens split"]);
+		expect(commands.map((c) => c.name)).toEqual(["lens"]);
 		await Promise.resolve();
 		expect(seen).toHaveLength(1);
 		expect(seen[0]?.ctx.paneId).toBe("w1:p1");

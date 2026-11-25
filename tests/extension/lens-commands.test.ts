@@ -279,10 +279,14 @@ describe("lens gate — outside Herdr", () => {
 });
 
 describe("/lens commands", () => {
-	test("registers /lens and /lens split plus the session_start capture hook", () => {
+	test("registers a single /lens command plus the session_start capture hook", () => {
 		const h = activate({});
 		expect(h.fake.commands.has("lens")).toBe(true);
-		expect(h.fake.commands.has("lens split")).toBe(true);
+		// Host dispatch splits the name at the FIRST literal space
+		// (docs/slash-command-internals.md §5): a "lens split" name is
+		// unreachable — the split subcommand must live inside /lens.
+		expect(h.fake.commands.has("lens split")).toBe(false);
+		expect([...h.fake.commands.keys()]).toEqual(["lens"]);
 		expect(h.fake.hooks.has("session_start")).toBe(true);
 	});
 
@@ -308,20 +312,34 @@ describe("/lens commands", () => {
 		expect(h.topo.calls).toHaveLength(0);
 	});
 
-	test("/lens split <id> opens a worker-scoped split via openWorkerSplit", async () => {
+	test("/lens with unknown args still opens the overview (read-only)", async () => {
 		const h = activate({});
 		emitHook(h.fake, "session_start", {}, lensCtx("sess-1"));
 		await lensReady();
-		invokeCommand(h.fake, "lens split", "w-42", lensCtx("sess-1"));
+		invokeCommand(h.fake, "lens", "open", lensCtx("sess-1"));
+		invokeCommand(h.fake, "lens", "bogus-thing", lensCtx("sess-1"));
+		expect(h.topo.calls.filter((c) => c === "openOverview")).toHaveLength(2);
+		expect(h.topo.splits).toHaveLength(0);
+	});
+
+	test("/lens split <id> dispatches through the lens handler to openWorkerSplit", async () => {
+		const h = activate({});
+		emitHook(h.fake, "session_start", {}, lensCtx("sess-1"));
+		await lensReady();
+		// Host-equivalent dispatch: name "lens", args tail "split w-42".
+		invokeCommand(h.fake, "lens", "split w-42", lensCtx("sess-1"));
 		expect(h.topo.splits).toEqual([{ workerId: "w-42", dir: undefined }]);
+		expect(h.topo.calls).not.toContain("openOverview");
 	});
 
 	test("/lens split without an id does nothing", async () => {
 		const h = activate({});
 		emitHook(h.fake, "session_start", {}, lensCtx("sess-1"));
 		await lensReady();
-		invokeCommand(h.fake, "lens split", "   ", lensCtx("sess-1"));
+		invokeCommand(h.fake, "lens", "split", lensCtx("sess-1"));
+		invokeCommand(h.fake, "lens", "split   ", lensCtx("sess-1"));
 		expect(h.topo.splits).toHaveLength(0);
+		expect(h.topo.calls).toHaveLength(0);
 	});
 
 	test("commands create the topology at most once and stay read-only", async () => {
@@ -329,7 +347,7 @@ describe("/lens commands", () => {
 		emitHook(h.fake, "session_start", {}, lensCtx("sess-1"));
 		await lensReady();
 		invokeCommand(h.fake, "lens", "", lensCtx("sess-1"));
-		invokeCommand(h.fake, "lens split", "w-1", lensCtx("sess-1"));
+		invokeCommand(h.fake, "lens", "split w-1", lensCtx("sess-1"));
 		invokeCommand(h.fake, "lens", "", lensCtx("sess-1"));
 		expect(h.created).toHaveLength(1);
 		expect(h.topo.calls.filter((c) => c === "openOverview")).toHaveLength(2);

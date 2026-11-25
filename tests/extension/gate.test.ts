@@ -115,7 +115,7 @@ describe("lensExtension gate", () => {
 
 		lensExtension(pi, { startObservation });
 
-		expect(calls.commands).toHaveLength(2);
+		expect(calls.commands).toHaveLength(1);
 		expect(calls.commands[0]?.name).toBe("lens");
 		expect(calls.commands[0]?.handlerInvocable).toBe(true);
 		// P2-4/P4-3: activation is delegated to startObservation (stubbed) — the

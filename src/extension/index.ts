@@ -166,24 +166,27 @@ export default function lensExtension(pi: LensExtensionApi, deps?: LensExtension
 
 	// --- read-only commands (P4-3 / D3) -------------------------------------
 
+	// OMP slash dispatch resolves the command name only up to the FIRST
+	// literal space (docs/slash-command-internals.md §5), so `/lens split
+	// <id>` arrives here as args "split <id>" — a "lens split" command name
+	// can never match. The split subcommand is parsed from the arg tail.
 	pi.registerCommand("lens", {
-		description: "open the herdr-omp-lens overview (read-only, no focus)",
-		handler: (_args, handlerCtx) => {
-			captureSession(handlerCtx);
-			const topo = ensureTopology();
-			if (topo === null) return;
-			void topo.openOverview().catch(onError);
-		},
-	});
-	pi.registerCommand("lens split", {
-		description: "open a read-only worker-scoped split: /lens split <workerId>",
+		description:
+			"open the herdr-omp-lens overview (read-only, no focus); " +
+			"/lens split <workerId> opens a worker-scoped split",
 		handler: (args, handlerCtx) => {
-			const workerId = args.trim();
-			if (workerId === "") return;
 			captureSession(handlerCtx);
 			const topo = ensureTopology();
 			if (topo === null) return;
-			void topo.openWorkerSplit(workerId).catch(onError);
+			const tail = args.trim();
+			const head = tail.split(/\s+/, 1)[0];
+			if (head === "split") {
+				const workerId = tail.slice(head.length).trim();
+				if (workerId === "") return;
+				void topo.openWorkerSplit(workerId).catch(onError);
+				return;
+			}
+			void topo.openOverview().catch(onError);
 		},
 	});
 
