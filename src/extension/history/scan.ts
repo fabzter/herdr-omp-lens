@@ -219,11 +219,20 @@ export function createHistorySource(deps: HistoryDeps = {}): HistorySource {
 	const statSeam = deps.stat ?? stat;
 	const readFileTailSeam = deps.readFileTail ?? boundedTailReadFile;
 
+	/**
+	 * P5-R8 mtime-keyed parse cache: sessionFile -> last snapshot (or null for
+	 * a parsed-but-filtered file). A second scan whose mtime is unchanged
+	 * performs ZERO reads — the head/tail seams and the mapper are skipped.
+	 * Entries under the scanned projectDir that no longer exist are pruned.
+	 */
+	const cache = new Map<string, { mtimeMs: number; snapshot: WorkerSnapshot | null }>();
+
 	return {
 		scan: async (cwd, opts) => {
 			const warnings: string[] = [];
 			const workers: WorkerSnapshot[] = [];
 			const scannedAt = now();
+			const seen = new Set<string>();
 			const maxSessions = opts?.maxSessions ?? DEFAULT_MAX_SESSIONS;
 			const maxWorkers = opts?.maxWorkers ?? DEFAULT_MAX_WORKERS;
 			const maxFileBytes = opts?.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
@@ -280,6 +289,13 @@ export function createHistorySource(deps: HistoryDeps = {}): HistorySource {
 						continue;
 					}
 
+					seen.add(sessionFile);
+					const cached = cache.get(sessionFile);
+					if (cached !== undefined && cached.mtimeMs === mtimeMs) {
+						if (cached.snapshot !== null) workers.push(cached.snapshot);
+						continue;
+					}
+
 					let content: string;
 					try {
 						content = await readFileSeam(sessionFile, "utf8", maxFileBytes);
@@ -290,6 +306,34 @@ export function createHistorySource(deps: HistoryDeps = {}): HistorySource {
 					// Char-level safety net for seams that ignore maxBytes.
 					if (content.length > maxFileBytes) {
 						content = content.slice(0, maxFileBytes);
+					}
+
+					// P5-R7 bounded retry: a torn trailing line means a live TUI was
+					// mid-flush. Re-stat once — if the file grew, re-read once (the
+					// flush may have landed); never a loop (U-OMP-7).
+					const last = content.trimEnd().split("\n").at(-1) ?? "";
+					if (last !== "") {
+						try {
+							JSON.parse(last);
+						} catch {
+							try {
+								const s2 = await statSeam(sessionFile);
+								if (
+									s2.mtimeMs !== mtimeMs ||
+									(fileSize !== undefined && s2.size !== undefined && s2.size > fileSize)
+								) {
+									mtimeMs = s2.mtimeMs;
+									fileSize = s2.size;
+									content = await readFileSeam(sessionFile, "utf8", maxFileBytes);
+									if (content.length > maxFileBytes) {
+										content = content.slice(0, maxFileBytes);
+									}
+								}
+							} catch {
+								// Still torn or unstat-able — keep the head window; the
+								// mappers skip the undecodable line deterministically.
+							}
+						}
 					}
 
 					// Bounded TAIL window for the terminal marker (P5-R4): the
@@ -318,8 +362,13 @@ export function createHistorySource(deps: HistoryDeps = {}): HistorySource {
 						projectDir,
 						statusLines,
 					);
+					cache.set(sessionFile, { mtimeMs, snapshot });
 					if (snapshot !== null) workers.push(snapshot);
 				}
+			}
+			// Prune cache entries for this project tree whose files vanished.
+			for (const key of cache.keys()) {
+				if (key.startsWith(`${projectDir}/`) && !seen.has(key)) cache.delete(key);
 			}
 			return { workers, warnings, scannedAt };
 		},
