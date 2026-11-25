@@ -6,35 +6,22 @@
  * including reconnects) and topology's `onHistoryPresent` (startup
  * auto-open). Neither P2 nor P4 constructs the other's source.
  *
- * The v1 stub scans nothing and returns an empty result — P5 replaces it
- * with the real artifact-dir scan (`createHistorySource`); this file fixes
- * the interface so the P4-3 activation wiring is already settled.
+ * The canonical interface definitions live in `src/extension/history`
+ * (single definition — re-exported here for back-compat); the real
+ * artifact-dir scan (`createHistorySource`) replaces the v1 stub in P5.
  */
-import type { WorkerSnapshot } from "../protocol/types";
+import type { HistorySource } from "./history/index";
 
-export interface HistoryScanOptions {
-	/** default 20 in the real scan */
-	maxSessions?: number;
-	/** default 100 in the real scan */
-	maxWorkers?: number;
-	/** per-transcript parse cap in the real scan */
-	maxFileBytes?: number;
-}
-
-export interface HistoryScan {
-	workers: WorkerSnapshot[];
-	warnings: string[];
-	scannedAt: number;
-}
-
-export interface HistorySource {
-	scan(cwd: string, opts?: HistoryScanOptions): Promise<HistoryScan>;
-}
+export type {
+	HistoryScan,
+	HistoryScanOptions,
+	HistorySource,
+} from "./history/index";
 
 /**
- * Empty scan — no session artifacts are read in v1 (RC-6). `scannedAt` is a
- * real timestamp so consumers can distinguish "scanned, empty" from "never
- * scanned" without an extra flag.
+ * Empty scan — kept for tests that need a no-op HistorySource. `scannedAt`
+ * is a real timestamp so consumers can distinguish "scanned, empty" from
+ * "never scanned" without an extra flag.
  */
 export function createHistoryStub(): HistorySource {
 	return {
