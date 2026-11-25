@@ -24,5 +24,9 @@ export interface HistoryScan {
 export interface HistorySource {
 	scan(cwd: string, opts?: HistoryScanOptions): Promise<HistoryScan>;
 }
-
-export { createHistorySource, encodeCwdSlug, type HistoryDeps } from "./scan";
+export {
+	boundedReadFile,
+	createHistorySource,
+	encodeCwdSlug,
+	type HistoryDeps,
+} from "./scan";

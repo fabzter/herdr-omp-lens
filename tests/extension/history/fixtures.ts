@@ -124,7 +124,7 @@ export function makeFixtureTree(): FixtureTree {
 	writeFileSync(join(s1dir, "notes.md"), "# notes\n");
 	writeFileSync(join(s1dir, "w1.jsonl.lock.os"), "");
 	writeFileSync(join(s1dir, ".hidden.jsonl"), "garbage\n");
-	mkdirSync(join(s1dir, "stray.jsonl.d")); // dir named like a transcript
+	mkdirSync(join(s1dir, "stray.jsonl")); // dir named like a transcript (exercises isDirectory guard)
 
 	// Foreign cwd tree — scanning PROJECT_CWD must never enumerate it.
 	const foreignDir = join(sessionsRoot, encodeCwdSlug("/proj/b"), SESSION_1);

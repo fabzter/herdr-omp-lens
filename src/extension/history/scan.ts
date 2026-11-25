@@ -10,7 +10,7 @@
  * unparseable files degrade to warnings inside a partial result — the scan
  * never throws into an OMP turn. No lease, no `omp read history://`.
  */
-import { readdir, readFile, stat } from "node:fs/promises";
+import { open, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { WorkerSnapshot } from "../../protocol/types";
@@ -33,13 +33,35 @@ export interface HistoryDeps {
 	/** clock seam for deterministic `scannedAt` (default: Date.now). */
 	now?: () => number;
 	readDir?: (path: string) => Promise<string[]>;
-	readFile?: (path: string, encoding: "utf8") => Promise<string>;
+	/** Transcript reader; `maxBytes` bounds the I/O when provided. */
+	readFile?: (path: string, encoding: "utf8", maxBytes?: number) => Promise<string>;
 	stat?: (path: string) => Promise<{ mtimeMs: number; isDirectory(): boolean }>;
 }
 
 /** Absolute cwd with every "/" replaced by "-" (verified 2026-11-24). */
 export function encodeCwdSlug(cwd: string): string {
 	return cwd.replaceAll("/", "-");
+}
+/**
+ * Default read seam: reads at most `maxBytes` bytes via fs.open/read, then
+ * utf8-decodes (a truncated multibyte tail is replaced by U+FFFD). Bounds
+ * both I/O and peak memory — `readFile` alone would load the whole
+ * transcript before the char-level slice ever ran (P5-R8 / NFR-03).
+ */
+export async function boundedReadFile(
+	path: string,
+	_encoding: "utf8",
+	maxBytes: number,
+): Promise<string> {
+	if (maxBytes <= 0) return "";
+	const fh = await open(path, "r");
+	try {
+		const buf = Buffer.allocUnsafe(maxBytes);
+		const { bytesRead } = await fh.read(buf, 0, maxBytes, 0);
+		return buf.subarray(0, bytesRead).toString("utf8");
+	} finally {
+		await fh.close();
+	}
 }
 
 interface SessionHeader {
@@ -127,7 +149,7 @@ export function createHistorySource(deps: HistoryDeps = {}): HistorySource {
 	const sessionsRoot = deps.sessionsRoot ?? join(homedir(), ".omp", "agent", "sessions");
 	const now = deps.now ?? Date.now;
 	const readDir = deps.readDir ?? readdir;
-	const readFileSeam = deps.readFile ?? readFile;
+	const readFileSeam = deps.readFile ?? boundedReadFile;
 	const statSeam = deps.stat ?? stat;
 
 	return {
@@ -191,11 +213,12 @@ export function createHistorySource(deps: HistoryDeps = {}): HistorySource {
 
 					let content: string;
 					try {
-						content = await readFileSeam(sessionFile, "utf8");
+						content = await readFileSeam(sessionFile, "utf8", maxFileBytes);
 					} catch (err) {
 						warnings.push(`history scan: ${sessionFile} unreadable: ${describeErr(err)}`);
 						continue;
 					}
+					// Char-level safety net for seams that ignore maxBytes.
 					if (content.length > maxFileBytes) {
 						content = content.slice(0, maxFileBytes);
 					}
