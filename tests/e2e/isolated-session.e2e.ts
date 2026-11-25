@@ -239,25 +239,38 @@ const agentListSchema = z.object({
 
 type Json = unknown;
 
+// Pure reads ("list"/"get") retry once on truncated-JSON EOF — herdr
+// occasionally closes the pipe early; re-running a READ is harmless, while a
+// mutation (close/create/send-keys/split…) must never be replayed (a retry
+// could double-close or double-type).
+const READ_OPS: Record<string, true> = { list: true, get: true };
 async function herdrJson(args: string[], timeoutMs = T.cliMs): Promise<Json> {
-	const proc = Bun.spawn(["herdr", ...args], { stdout: "pipe", stderr: "pipe" });
-	const timer = setTimeout(() => {
-		try {
-			proc.kill("SIGKILL");
-		} catch {
-			// already dead
+	const run = async (): Promise<Json> => {
+		const proc = Bun.spawn(["herdr", ...args], { stdout: "pipe", stderr: "pipe" });
+		const timer = setTimeout(() => {
+			try {
+				proc.kill("SIGKILL");
+			} catch {
+				// already dead
+			}
+		}, timeoutMs);
+		const [code, out, err] = await Promise.all([
+			proc.exited,
+			new Response(proc.stdout).text(),
+			new Response(proc.stderr).text(),
+		]);
+		clearTimeout(timer);
+		if (code !== 0) {
+			throw new Error(`herdr ${args.join(" ")} → exit ${code}: ${(err || out).slice(0, 500)}`);
 		}
-	}, timeoutMs);
-	const [code, out, err] = await Promise.all([
-		proc.exited,
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
-	]);
-	clearTimeout(timer);
-	if (code !== 0) {
-		throw new Error(`herdr ${args.join(" ")} → exit ${code}: ${(err || out).slice(0, 500)}`);
+		return envelope.parse(JSON.parse(out)).result;
+	};
+	try {
+		return await run();
+	} catch (err) {
+		if (err instanceof SyntaxError && args[1] !== undefined && READ_OPS[args[1]]) return run();
+		throw err;
 	}
-	return envelope.parse(JSON.parse(out)).result;
 }
 
 /** `herdr pane read` returns RAW screen text, not JSON. */
@@ -439,7 +452,9 @@ function spawnPrompt(name: string, text: string, timeoutMs = T.promptMs): Prompt
 
 /** Type literal text + enter into the TUI input — the faithful slash-command path. */
 async function paneTypeCommand(paneId: string, text: string): Promise<void> {
-	await herdrJson(["pane", "send-text", paneId, text]);
+	// send-text replies are unused — route through herdrProc (exit-code only)
+	// so the JSON envelope surface can't flake typing (Run D/E EOF hit here).
+	await herdrProc(["pane", "send-text", paneId, text], `pane send-text ${paneId}`);
 	await paneSendKeys(paneId, ["enter"]);
 }
 
@@ -650,6 +665,7 @@ interface E2EState {
 	overviewTabId?: string;
 	overviewPaneId?: string;
 	splitPaneId?: string;
+	splitTabId?: string;
 	sessionFile1?: string;
 	sessionId1?: string;
 	sessionFile2?: string;
@@ -738,23 +754,25 @@ async function assertFocusPreserved(step: string, before: FocusState, wsId: stri
 	pass(step, "no focus theft", `focus stayed on ${after.focusedTab} (${after.focusedWorkspace})`);
 }
 
-/** Assert every pane in the overview tab is a plain pane, never an agent. */
-async function assertViewerNotAgent(step: string, tabId: string): Promise<void> {
-	const panes = await panesInTab(tabId);
-	for (const p of panes) {
-		if (p.agent !== null && p.agent !== undefined) {
-			throw fail(
-				step,
-				"U-HDR-1 viewer never agent",
-				`pane ${p.pane_id} misclassified as agent=${p.agent} (${p.agent_status})`,
-			);
+/** Assert every pane in every overview-labeled tab is a plain pane, never an
+ *  agent — /lens split can create a SECOND 'OMP subagents' tab, so sweeping
+ *  one tab id can miss a misclassified pane in the other (U-HDR-1). */
+async function assertViewerNotAgent(step: string, wsId: string): Promise<void> {
+	const { overviewTabs } = await tabsIn(wsId);
+	let count = 0;
+	for (const tabId of overviewTabs) {
+		for (const p of await panesInTab(tabId)) {
+			count++;
+			if (p.agent !== null && p.agent !== undefined) {
+				throw fail(
+					step,
+					"U-HDR-1 viewer never agent",
+					`pane ${p.pane_id} misclassified as agent=${p.agent} (${p.agent_status})`,
+				);
+			}
 		}
 	}
-	pass(
-		step,
-		"U-HDR-1 viewer never agent",
-		`${panes.length} viewer pane(s) report agent=null/undefined`,
-	);
+	pass(step, "U-HDR-1 viewer never agent", `${count} viewer pane(s) report agent=null/undefined`);
 }
 
 function collectWorkerIds(step: string): void {
@@ -908,7 +926,7 @@ async function stepSetupAndSpawn(before: Enumerate): Promise<void> {
 		throw fail(step, "overview created in disposable workspace only", "id collided with baseline");
 	}
 	await assertFocusPreserved(step, beforeFocus, st.workspaceId);
-	await assertViewerNotAgent(step, overview.tabId);
+	await assertViewerNotAgent(step, st.workspaceId as string);
 
 	// viewer connects to the bridge and renders the live roster
 	const screen = await waitForRetry(
@@ -1103,7 +1121,7 @@ async function stepCloseReopen(): Promise<void> {
 	st.overviewPaneId = overview.paneId;
 	pass(step, "exactly one overview tab reopened (FR-05)", `tab ${overview.tabId}`);
 	await assertFocusPreserved(step, beforeFocus, wsId);
-	await assertViewerNotAgent(step, overview.tabId);
+	await assertViewerNotAgent(step, wsId);
 	await prompt.done;
 	stopWatch2();
 	const done2 = await waitForRetry(
@@ -1136,7 +1154,10 @@ async function stepLensSplit(): Promise<void> {
 	// Registration pre-check: typing "/lens" opens the TUI command palette
 	// listing the command — evidence /lens is registered in this build before
 	// the split attempt. Esc clears the palette, then the real command runs.
-	await herdrJson(["pane", "send-text", st.shellPaneId as string, "/lens"]).catch(() => {});
+	await herdrProc(
+		["pane", "send-text", st.shellPaneId as string, "/lens"],
+		"pane send-text /lens",
+	).catch(() => {});
 	await Bun.sleep(800);
 	const palette = await paneRead(st.shellPaneId as string);
 	if (/lens\s+open the herdr-omp-lens overview/.test(palette)) {
@@ -1146,20 +1167,39 @@ async function stepLensSplit(): Promise<void> {
 	}
 	await paneSendKeys(st.shellPaneId as string, ["escape"]).catch(() => {});
 	await Bun.sleep(400);
+	// Esc closes the palette but leaves the typed "/lens" in the input line —
+	// ctrl+u clears it. Observed live (Run E2): without the clear, the real
+	// command lands as "/lens/lens split <id>" and is submitted to the agent
+	// as a prompt, never executed as a slash command.
+	await paneSendKeys(st.shellPaneId as string, ["ctrl+u"]).catch(() => {});
+	await Bun.sleep(300);
 	await paneTypeCommand(st.shellPaneId as string, `/lens split ${workerId}`);
 	const splitPane = await waitForRetry(
 		`/lens split ${workerId} opens worker-scoped pane`,
 		async () => {
-			const panes = await panesInTab(st.overviewTabId as string);
-			const candidate = panes.find((p) => p.pane_id !== st.overviewPaneId);
-			if (candidate === undefined) return undefined;
-			const info = paneInfoSchema.parse(await herdrJson(["pane", "get", candidate.pane_id]));
-			const title = info.pane.title ?? "";
-			if (!title.includes(OVERVIEW_LABEL)) return undefined;
-			return { paneId: candidate.pane_id, title };
+			// `/lens split` opens a NEW overview-labeled tab holding the overview
+			// pane + the worker-scoped pane (observed live Run E2, w1A:t4), so
+			// scan every 'OMP subagents' tab — not just st.overviewTabId. herdr
+			// 0.9.5 pane list reports title=null for viewer panes, and even a
+			// real title can't distinguish the scoped pane from the tab's
+			// overview copy — only `scope: worker <id>` content does (the same
+			// evidence the scoped-render check asserts).
+			const { overviewTabs } = await tabsIn(wsId);
+			for (const tabId of overviewTabs) {
+				for (const candidate of await panesInTab(tabId)) {
+					if (candidate.pane_id === st.overviewPaneId) continue;
+					const title = candidate.title ?? candidate.terminal_title_stripped ?? "";
+					const text = await paneRead(candidate.pane_id, 25).catch(() => "");
+					if (text.includes(`scope: worker ${workerId}`)) {
+						return { paneId: candidate.pane_id, tabId, title };
+					}
+				}
+			}
+			return undefined;
 		},
 		T.tabOpenMs,
 	);
+	st.splitTabId = splitPane.tabId;
 	st.splitPaneId = splitPane.paneId;
 	pass(
 		step,
@@ -1174,7 +1214,7 @@ async function stepLensSplit(): Promise<void> {
 		);
 	}
 	await assertFocusPreserved(step, beforeFocus, wsId);
-	await assertViewerNotAgent(step, st.overviewTabId as string);
+	await assertViewerNotAgent(step, wsId);
 	const scoped = await waitForRetry(
 		"scoped viewer renders worker",
 		async () => {
@@ -1318,7 +1358,7 @@ async function stepRestart(): Promise<void> {
 	pass(step, "surviving tab reused (D2 rebind)", `same tab ${priorTabId} rebound`);
 	st.overviewTabId = overview2.tabId;
 	st.overviewPaneId = overview2.paneId;
-	await assertViewerNotAgent(step, overview2.tabId);
+	await assertViewerNotAgent(step, wsId);
 
 	// reconnect to the NEW socket: new session id + [connected]
 	const screen2 = await waitForRetry(
@@ -1405,9 +1445,9 @@ async function stepCrossWorkspaceFocus(): Promise<void> {
 	);
 	await prompt.done;
 	stopWatch3();
-	// live-wins merge evidence: prior workers still [not-live], new one live→finished
+	// merge evidence: prior workers still listed, new one live→finished
 	const done3 = await waitForRetry(
-		"post-restart worker reaches terminal state",
+		"post-spawn worker reaches terminal state",
 		async () => {
 			const text = await paneRead(st.overviewPaneId as string);
 			if (/finished \([1-9]\d*\)/.test(text)) return "finished-collapse observed";
@@ -1416,7 +1456,7 @@ async function stepCrossWorkspaceFocus(): Promise<void> {
 		},
 		T.finishedMs,
 	);
-	note(step, "post-restart worker terminal state", done3);
+	note(step, "post-spawn worker terminal state", done3);
 	collectWorkerIds(step);
 }
 
@@ -1627,6 +1667,24 @@ async function main(): Promise<number> {
 			} else {
 				record("s3", "read-only /lens split", "skipped", "overview/shell prerequisites missing");
 			}
+			// s5 runs BEFORE s4: cross-workspace focus is independent of the
+			// restart, and the restarted local-build (-e) agent's session never
+			// binds, leaving st.overviewPaneId dead — s5 needs the healthy
+			// installed-build overview pane still live from s1–s3.
+			const s5req =
+				st.workspaceId !== undefined &&
+				st.agentName !== undefined &&
+				st.overviewPaneId !== undefined;
+			if (s5req) {
+				await runStep("s5", "cross-workspace focus preservation", () => stepCrossWorkspaceFocus());
+			} else {
+				record(
+					"s5",
+					"cross-workspace focus preservation",
+					"skipped",
+					"live agent/overview prerequisites missing",
+				);
+			}
 			const s4req =
 				st.workspaceId !== undefined &&
 				st.shellPaneId !== undefined &&
@@ -1639,20 +1697,6 @@ async function main(): Promise<number> {
 				record(
 					"s4",
 					"OMP restart → history auto-open",
-					"skipped",
-					"live agent/overview prerequisites missing",
-				);
-			}
-			const s5req =
-				st.workspaceId !== undefined &&
-				st.agentName !== undefined &&
-				st.overviewPaneId !== undefined;
-			if (s5req) {
-				await runStep("s5", "cross-workspace focus preservation", () => stepCrossWorkspaceFocus());
-			} else {
-				record(
-					"s5",
-					"cross-workspace focus preservation",
 					"skipped",
 					"live agent/overview prerequisites missing",
 				);

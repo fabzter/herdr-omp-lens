@@ -67,10 +67,11 @@ Findings:
 
 ## Manual-evidence steps (exact rerun command)
 
-After Run D (2026-11-25 ~12:21 UTC, owner-witnessed): s1 (except the transient finished-collapse
-readback) and s2 are live-proven. Still manual: **s3** (`herdr pane get` JSON EOF flake),
-**s4** (local-build `-e` session-bind gap → viewer-reconnect timeout), **s5** (spawn-lands timeout,
-correlated with the s4 bind gap). Rerun: `RUN_E2E_LIVE=1 bash scripts/run-e2e.sh`
+After Runs D/E/E2 (2026-11-25, owner-witnessed): s1 (except the transient finished-collapse
+readback), s2 and s5 are live-proven. Still manual: **s3** (`/lens split` — send-text
+JSON EOF fixed → input-clear + pane-list null-title bugs found and fixed post-E2;
+live witness pending one post-fix run) and **s4** (local-build `-e` session-bind gap →
+viewer-reconnect timeout). Rerun: `RUN_E2E_LIVE=1 bash scripts/run-e2e.sh`
 inside a Herdr pane. s4 uses the LOCAL build automatically:
 `omp --no-extensions --config <scratch>/omp-e2e-overlay.yml -e <repo>/src/extension/index.ts`.
 
@@ -229,3 +230,81 @@ Live-proven vs manual (honest):
 - **s6 — PASS:** daily workspace identical before/after; no `lens-e2e-*` left behind.
   w17 was then closed manually and `herdr workspace list` re-verified: 13 daily workspaces
   (wM, wN, wP, wB, w1, w2, wD, wC, w9, w7, w8, wG, wJ), zero `lens-e2e-*` remaining.
+
+## Run E — s3/s5 harness fix, owner-witnessed (`E2E_KEEP_WORKSPACE=1 RUN_E2E_LIVE=1`, 2026-11-25 ~12:44 UTC)
+
+Harness changes under test: (a) s5 reordered BEFORE s4 so cross-workspace focus
+runs on the healthy installed-build agent (the s4 local-build restart kills the
+overview pane — Runs C/D s5 timeouts were the same bind gap); (b) s3 split-wait
+dropped the flaky `herdr pane get`, reading the title from the pane-list entry.
+
+Result: **21 pass / 0 fail / 4 manual / 0 skipped** in ~686 s, exit 0.
+Disposable workspace **w19** (`lens-e2e-2026-11-25T12-44-01-640Z`), closed after
+the run via `herdr workspace close w19`.
+
+```
+checks    : 21 pass, 0 fail, 4 manual, 0 skipped, 17 notes
+  [pass] s1 disposable workspace created — w19 (lens-e2e-2026-11-25T12-44-01-640Z)
+  [pass] s1 omp launched (installed build) — agent=lense2e1640z session=01a212bc-1256-7560-8eec-ea45a7b620a0
+  [pass] s1 auto-open on first spawn — tab w19:t2 pane w19:p3
+  [pass] s1 no focus theft — focus stayed on wN:t1 (wN)
+  [pass] s1 viewer connected, live worker listed — [connected] + workers (>=1)
+  [manual] s1 finished-collapse — collapse window missed (unit-covered; transient as before)
+  [pass] s2 manual close honored — tab w19:t2 closed
+  [pass] s2 exactly one overview tab reopened (FR-05) — tab w19:t3
+  [note] s3 /lens registered — palette shows '/lens open the herdr-omp-lens overview…'
+  [manual] s3 read-only /lens split — env-coupled — SyntaxError: JSON Parse error: Unexpected EOF
+  [note] s5 cross-workspace precondition — focused=wN (wN:t1); e2e=w19
+  [pass] s5 cross-workspace focus preserved (FR-13) — focus stayed wN:t1 (wN)
+  [note] s5 post-spawn worker terminal state — workers (0) steady state
+  [pass] s4 omp exited — session 01a212bc-… closed
+  [manual] s4 session bind after restart — agent_session never bound (env-coupled)
+  [pass] s4 surviving tab reused (D2 rebind) — same tab w19:t3 rebound
+  [manual] s4 OMP restart → history auto-open — viewer-reconnect timeout 30s×2 (same bind gap)
+  [pass] s6 daily workspace untouched — 13 workspaces, 19 tabs, 21 panes — identical before/after
+```
+
+### s3 root-cause chain (refined, evidence-driven)
+
+The "pane-get flake" attribution from Run D was incomplete — `waitFor` swallows
+`fn` errors, so a bare `SyntaxError` could only escape through an **unguarded**
+`herdrJson` call. The actual site was `pane send-text` (typed-command replies
+are parsed as JSON envelopes though unused). Hardening landed: `send-text` →
+`herdrProc` (exit-code only), and `herdrJson` retries once on `SyntaxError`
+for pure reads (`list`/`get`) only — mutations are never replayed.
+
+## Run E2 — s3 hardening verification (`E2E_KEEP_WORKSPACE=1 RUN_E2E_LIVE=1`, 2026-11-25 ~12:55 UTC)
+
+Result: **20 pass / 0 fail / 5 manual / 0 skipped** in ~1140 s, exit 0.
+Disposable workspace **w1A** (`lens-e2e-2026-11-25T12-55-41-425Z`), closed by the
+next safe run's stale-sweep; 13 dailies verified identical before/after again.
+
+- **s3 — still manual, but the EOF is gone** (hardening works; `[manual]` is now a
+  clean 150 s×2 timeout). Live inspection of w1A exposed TWO new harness bugs:
+  1. `escape` dismisses the palette but leaves `/lens` in the input line —
+     the real command landed as `/lens/lens split alpha-responder` and was
+     submitted to the agent as a PROMPT (verbatim TUI transcript captured).
+     Fixed with `ctrl+u` input clear before typing the real command.
+  2. `herdr pane list` (0.9.5) reports `title: null` for EVERY pane incl. the
+     viewer → the OVERVIEW_LABEL title gate could never match. Also `/lens
+     split` opens a NEW tab (`w1A:t4`) holding overview copy + scoped pane,
+     so the wait now scans every 'OMP subagents' tab and detects the scoped
+     pane by `scope: worker <id>` content.
+- **Manual probe on the kept w1A** (no quota needed): `ctrl+u` + `/lens split
+  alpha-responder` opened `w1A:t4` with `p6` rendering verbatim
+  `omp lens — session 01a212c6-… [connected] / scope: worker alpha-responder /
+  worker alpha-responder: not found` — the scoped-split mechanics work end to
+  end; the remaining live witness is one full-run pass post-fix.
+- **s5 — manual this run:** `cross-workspace spawn lands` timed out 150 s×2
+  because the OMP agent hit **"Individual quota reached"** mid-run — the spawn
+  prompt never dispatched. Env gap, not a focus regression; Run E's live proof
+  stands (FR-13).
+- **s4 — manual, unchanged:** local-build `agent_session` never binds →
+  viewer-reconnect timeout; tab reuse/rebind passes live every run.
+
+## Cleanup verification (post E/E2)
+
+`w19` closed via `herdr workspace close w19`; `w1A` closed by the subsequent
+safe run's stale-sweep. `herdr workspace list` re-verified: exactly the 13
+daily workspaces (wM, wN, wP, wB, w1, w2, wD, wC, w9, w7, w8, wG, wJ),
+**zero `lens-e2e-*` remaining**, focus on `wN`.
