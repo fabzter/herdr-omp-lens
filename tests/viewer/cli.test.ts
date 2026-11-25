@@ -482,4 +482,95 @@ describe("runViewer — scripted session", () => {
 		}
 		expect(paints.join("")).toContain("rendered-3");
 	});
+
+	test("identity change resets render dedup: reselecting a worker re-renders (F1)", async () => {
+		const bridge = new RecordingBridge(
+			helloFrame("sess-e2e", [
+				snap("a", { sessionFile: "/tmp/a.jsonl", updatedAt: 1_000 }),
+				snap("b"), // no sessionFile — transcriptTarget() is null for b
+			]),
+		);
+		bridges.push(bridge);
+
+		let calls = 0;
+		const gates: (() => void)[] = [];
+		const { deps, whenPainted } = runDeps(bridge.socketPath, {
+			renderTranscript: async () => {
+				calls += 1;
+				const { promise, resolve } = Promise.withResolvers<void>();
+				gates.push(resolve);
+				await promise;
+				return `rendered-${calls}`;
+			},
+		});
+
+		deps.keys = (async function* () {
+			await whenPainted("transcript loading"); // render-1 (worker a) in flight
+			gates[0]?.(); // settle → "rendered-1" paints
+			await whenPainted("rendered-1");
+			yield "j"; // select b: identity → undefined, no render possible
+			await whenPainted("no transcript yet");
+			yield "k"; // reselect a: same stamp, but identity changed →
+			// launchedKey must have been reset, else pump dedupes K_A===K_A
+			// and the pane is stuck on "(transcript loading…)" forever.
+			await whenPainted("rendered-2");
+			yield "q";
+		})();
+
+		// Release render-2's gate as soon as it is invoked (REALTIME: spy
+		// counter is the only observable between launch and settle).
+		const driver = (async () => {
+			await waitFor(() => gates.length >= 2);
+			gates[1]?.();
+		})();
+
+		const code = await runViewer(deps);
+		await driver;
+		expect(code).toBe(0);
+		expect(calls).toBe(2);
+	});
+
+	test("quit mid-render: no repaint and no new render after quit (F2)", async () => {
+		const bridge = new RecordingBridge(
+			helloFrame("sess-e2e", [snap("a", { sessionFile: "/tmp/a.jsonl", updatedAt: 1_000 })]),
+		);
+		bridges.push(bridge);
+
+		let calls = 0;
+		const gates: (() => void)[] = [];
+		const { deps, paints, whenPainted } = runDeps(bridge.socketPath, {
+			renderTranscript: async () => {
+				calls += 1;
+				const { promise, resolve } = Promise.withResolvers<void>();
+				gates.push(resolve);
+				await promise;
+				return "rendered-1";
+			},
+		});
+
+		deps.keys = (async function* () {
+			await whenPainted("transcript loading"); // render-1 in flight
+			// stamp churn while in-flight → pending refresh queued
+			bridge.send(
+				JSON.stringify({
+					v: 1,
+					type: "worker.upsert",
+					worker: snap("a", { sessionFile: "/tmp/a.jsonl", updatedAt: 2_000 }),
+				}),
+			);
+			await whenPainted("updated: 2000");
+			yield "q"; // quit while render-1 is STILL in flight
+		})();
+
+		const code = await runViewer(deps);
+		expect(code).toBe(0);
+		const paintsAtQuit = paints.length;
+		const callsAtQuit = calls;
+		gates[0]?.(); // settle render-1 AFTER the viewer already exited
+		// REALTIME: flush the microtask chain (spy resolve → slot/paint →
+		// finally → pump) so a post-quit paint or spawn would be observable.
+		for (let i = 0; i < 12; i += 1) await Promise.resolve();
+		expect(paints.length, "post-quit repaint clobbers the shell").toBe(paintsAtQuit);
+		expect(calls, "post-quit pump spawned a render child").toBe(callsAtQuit);
+	});
 });
