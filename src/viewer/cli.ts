@@ -327,8 +327,13 @@ export async function runViewer(deps: RunViewerDeps): Promise<number> {
 				}
 			} finally {
 				renderInFlight = false;
-				pump(); // trailing refresh: launches iff the key moved on
-				paint();
+				if (!quit) {
+					// trailing refresh + repaint only while the UI lives; after
+					// quit this settle must not repaint (clobbers the shell) or
+					// spawn another render child (F2).
+					pump(); // trailing refresh: launches iff the key moved on
+					paint();
+				}
 			}
 		})();
 	};
@@ -353,10 +358,13 @@ export async function runViewer(deps: RunViewerDeps): Promise<number> {
 		slot.workerId = target?.id;
 		if (identity !== slot.identity) {
 			// real identity change (selection/file/thinking): drop whatever the
-			// previous target rendered; stamp-only churn keeps the text.
+			// previous target rendered; stamp-only churn keeps the text. Also
+			// forget the dedup key — a discarded render must never block the
+			// next launch for this identity (F1 stuck-loading regression).
 			slot.identity = identity;
 			slot.text = undefined;
 			slot.error = undefined;
+			launchedKey = undefined;
 		}
 		if (target === null) return;
 		pump();
