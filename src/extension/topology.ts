@@ -72,10 +72,20 @@ export interface TopologyDeps {
 	/** Injectable adapter; defaults to the P1 Herdr adapter bound to `ctx`. */
 	adapter?: TopologyAdapter;
 	/**
-	 * OMP session id exported to the viewer as `LENS_SESSION`. Defaults to the
-	 * OMP process id until P4-2 wires the real session id.
+	 * OMP session id exported to the viewer as `LENS_SESSION` (RC-4). Required:
+	 * P4-2 removed the pid fallback — the caller wires the real session id.
 	 */
-	sessionId?: string;
+	sessionId: string;
+	/**
+	 * Bridge-connection probe (SDD §8.3: viewer health is verified via the
+	 * bridge connection, not `pane.get` alone). P4-3 wires the BridgeHandle's
+	 * authed-client count; when absent the launch-time health check is skipped.
+	 */
+	viewerCount?: () => number;
+	/** Bound on the post-launch viewer-connect wait, ms (default 2000). */
+	viewerHealthTimeoutMs?: number;
+	/** Poll interval for the viewer-connect wait, ms (default 50). */
+	viewerHealthPollMs?: number;
 }
 
 export interface TopologyManager {
@@ -120,8 +130,15 @@ export function createTopologyManager(
 	emit: (m: Message) => void,
 	deps?: TopologyDeps,
 ): TopologyManager {
+	if (deps?.sessionId === undefined || deps.sessionId === "") {
+		// P4-2: the real OMP session id is required — no pid fallback (RC-4).
+		throw new Error("createTopologyManager requires deps.sessionId");
+	}
 	const adapter = deps?.adapter ?? defaultAdapter(ctx);
-	const sessionId = deps?.sessionId ?? String(process.pid);
+	const sessionId = deps.sessionId;
+	const viewerCount = deps?.viewerCount;
+	const viewerHealthTimeoutMs = deps?.viewerHealthTimeoutMs ?? 2000;
+	const viewerHealthPollMs = deps?.viewerHealthPollMs ?? 50;
 
 	let state: TopologyState = "closed";
 	let overview: OverviewRef | null = null;
@@ -227,6 +244,32 @@ export function createTopologyManager(
 		);
 	}
 
+	/**
+	 * Post-launch health: a live pane is not a live viewer — pane.send_input only
+	 * queues text (V-HDR-6). When a bridge-connection probe is wired (P4-3), wait
+	 * for a NEW authed viewer within a bounded window; a timeout throws so the
+	 * caller's normal degradation path engages (P4-R11). Without the probe this
+	 * is a no-op — the check is strictly additive. `before` is the viewer count
+	 * sampled BEFORE the launch so a connect during runInPane still counts.
+	 */
+	async function verifyViewerLaunched(before: number | undefined): Promise<void> {
+		if (viewerCount === undefined || before === undefined) return;
+		const deadline = performance.now() + viewerHealthTimeoutMs;
+		while (performance.now() <= deadline) {
+			if (viewerCount() > before) return;
+			// a zero bound means "probe once, then give up" — still deterministic.
+			if (viewerHealthTimeoutMs === 0) break;
+			const remaining = Math.min(viewerHealthPollMs, deadline - performance.now());
+			if (remaining <= 0) break;
+			await Bun.sleep(Math.max(1, remaining));
+		}
+		if (viewerCount() > before) return;
+		throw new Error(
+			`viewer did not connect to the bridge within ${viewerHealthTimeoutMs}ms ` +
+				`(pane.get alone is not proof of health)`,
+		);
+	}
+
 	// --- subscription (P4-R1: before the first create) -------------------------
 	function lifecycleHandlers(): LifecycleHandlers {
 		const enqueueEvent = (fn: () => Promise<void>): void => {
@@ -283,7 +326,9 @@ export function createTopologyManager(
 			overview = { tabId: survivor.tabId, paneId: survivor.paneId };
 			// P4-R4/F-11: env is honored only at tab.create — the relaunch must
 			// carry the NEW session's LENS_* inline, else the viewer dials the dead socket.
+			const survivorBaseline = viewerCount?.();
 			await adapter.runInPane(survivor.paneId, `${viewerEnvPrefix()} ${viewerCommand}`);
+			await verifyViewerLaunched(survivorBaseline);
 			await adapter.reportMetadata(survivor.paneId, {
 				source: TOPOLOGY_METADATA_SOURCE,
 				title: OVERVIEW_TAB_LABEL,
@@ -297,7 +342,9 @@ export function createTopologyManager(
 		state = "opening";
 		const { tabId, rootPaneId } = await adapter.createOverviewTab(OVERVIEW_TAB_LABEL, viewerEnv());
 		overview = { tabId, paneId: rootPaneId };
+		const rootBaseline = viewerCount?.();
 		await adapter.runInPane(rootPaneId, viewerCommand);
+		await verifyViewerLaunched(rootBaseline);
 		await adapter.reportMetadata(rootPaneId, {
 			source: TOPOLOGY_METADATA_SOURCE,
 			title: OVERVIEW_TAB_LABEL,
@@ -442,7 +489,17 @@ export function createTopologyManager(
 				const existing = splits.get(workerId);
 				if (existing !== undefined) {
 					const live = await adapter.getPane(existing);
-					if (live !== null) return { paneId: existing };
+					if (live !== null) {
+						// SDD §8.3: pane.get alone is not proof the viewer runs — when no
+						// viewer is on the bridge, relaunch into the same pane instead of
+						// handing back a dead view (env rides the relaunch, F-11).
+						if (viewerCount !== undefined && viewerCount() === 0) {
+							const reuseBaseline = viewerCount();
+							await adapter.runInPane(existing, `${viewerEnvPrefix()} ${viewerCommand}`);
+							await verifyViewerLaunched(reuseBaseline);
+						}
+						return { paneId: existing };
+					}
 					splits.delete(workerId);
 				}
 				const base = await ensureOverviewOpen();
@@ -452,7 +509,9 @@ export function createTopologyManager(
 					viewerEnv({ LENS_WORKER_ID: workerId }),
 				);
 				splits.set(workerId, paneId);
+				const splitBaseline = viewerCount?.();
 				await adapter.runInPane(paneId, viewerCommand);
+				await verifyViewerLaunched(splitBaseline);
 				await adapter.reportMetadata(paneId, {
 					source: TOPOLOGY_METADATA_SOURCE,
 					title: `${OVERVIEW_TAB_LABEL} · ${workerId}`,
