@@ -139,6 +139,43 @@ describe("applyMessage — worker.upsert / worker.removed", () => {
 		s = applyMessage(s, { v: 1, type: "worker.removed", id: "ghost" });
 		expect(s.workers.size).toBe(0);
 	});
+
+	test("removed clears selectedId and the transcript ref for that id (F3)", () => {
+		let s = applyMessage(
+			{ ...initialViewerState(), selectedId: "w1" },
+			{
+				v: 1,
+				type: "hello",
+				session: "s",
+				workers: [live("w1"), live("w2")],
+			},
+		);
+		s = applyMessage(s, {
+			v: 1,
+			type: "transcript.ref",
+			id: "w1",
+			sessionFile: "/tmp/w1.jsonl",
+		});
+		s = applyMessage(s, { v: 1, type: "worker.removed", id: "w1" });
+		expect(s.workers.has("w1")).toBe(false);
+		expect(s.selectedId).toBeUndefined();
+		expect(s.transcriptRefs.has("w1")).toBe(false);
+		expect(s.workers.has("w2")).toBe(true);
+	});
+
+	test("hello live-wins: same id in workers and history stays live (F1)", () => {
+		const s = applyMessage(initialViewerState(), {
+			v: 1,
+			type: "hello",
+			session: "sess-1",
+			workers: [live("w1")],
+			history: [snap("w1", { status: "completed" })],
+		});
+		const w = s.workers.get("w1");
+		expect(w?.status).toBe("running");
+		expect(w?.historical).toBeUndefined();
+		expect(s.workers.size).toBe(1);
+	});
 });
 
 describe("applyMessage — transcript.ref / topology", () => {
@@ -203,6 +240,28 @@ describe("applyMessage — robustness", () => {
 			undefined,
 		];
 		for (const m of junk) {
+			expect(() => applyMessage(s, m as Message)).not.toThrow();
+			expect(applyMessage(s, m as Message)).toBe(s);
+		}
+	});
+
+	test("structurally-bad known-type frames never throw and are no-ops (F2)", () => {
+		const s = applyMessage(initialViewerState(), {
+			v: 1,
+			type: "hello",
+			session: "s",
+			workers: [live("w1")],
+		});
+		const bad = [
+			JSON.parse('{"v":1,"type":"hello","session":"x"}'),
+			JSON.parse('{"v":1,"type":"hello","session":"x","workers":42}'),
+			JSON.parse('{"v":1,"type":"worker.upsert"}'),
+			JSON.parse('{"v":1,"type":"worker.upsert","worker":{"status":"running"}}'),
+			JSON.parse('{"v":1,"type":"topology","state":"open"}'),
+			JSON.parse('{"v":1,"type":"transcript.ref"}'),
+			JSON.parse('{"v":1,"type":"notice"}'),
+		];
+		for (const m of bad) {
 			expect(() => applyMessage(s, m as Message)).not.toThrow();
 			expect(applyMessage(s, m as Message)).toBe(s);
 		}

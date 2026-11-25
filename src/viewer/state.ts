@@ -98,6 +98,8 @@ function applyHello(s: ViewerState, m: Extract<Message, { type: "hello" }>): Vie
 	const workers = new Map<string, WorkerSnapshot>();
 	for (const w of m.workers) workers.set(w.id, w);
 	for (const w of m.history ?? []) {
+		// Live wins: a history entry must never overwrite a live row (RC-3).
+		if (workers.has(w.id)) continue;
 		// hello.history entries are historical by definition; normalize the flag
 		// so the not-live label never depends on the publisher remembering it.
 		workers.set(w.id, w.historical === true ? w : { ...w, historical: true });
@@ -115,8 +117,7 @@ function applyHello(s: ViewerState, m: Extract<Message, { type: "hello" }>): Vie
 		: next;
 }
 
-export function applyMessage(s: ViewerState, m: Message): ViewerState {
-	if (!isMessage(m)) return s;
+function reduceMessage(s: ViewerState, m: Message): ViewerState {
 	switch (m.type) {
 		case "hello":
 			return applyHello(s, m);
@@ -129,7 +130,14 @@ export function applyMessage(s: ViewerState, m: Message): ViewerState {
 			if (!s.workers.has(m.id)) return s;
 			const workers = new Map(s.workers);
 			workers.delete(m.id);
-			return { ...s, workers };
+			const next: ViewerState = { ...s, workers };
+			if (s.selectedId === m.id) next.selectedId = undefined;
+			if (s.transcriptRefs.has(m.id)) {
+				const transcriptRefs = new Map(s.transcriptRefs);
+				transcriptRefs.delete(m.id);
+				next.transcriptRefs = transcriptRefs;
+			}
+			return next;
 		}
 		case "transcript.ref": {
 			const transcriptRefs = new Map(s.transcriptRefs);
@@ -149,5 +157,43 @@ export function applyMessage(s: ViewerState, m: Message): ViewerState {
 		}
 		default:
 			return s;
+	}
+}
+
+export function applyMessage(s: ViewerState, m: Message): ViewerState {
+	if (!isMessage(m) || !shapeOk(m)) return s;
+	try {
+		// A known type with missing/bad fields must degrade to a no-op, never a
+		// TypeError — decodeMessage is the validation boundary, this is the floor.
+		return reduceMessage(s, m);
+	} catch {
+		return s;
+	}
+}
+
+/**
+ * Structural floor for a known type: the required fields must exist with the
+ * right primitive shapes, else the frame is a no-op. decodeMessage is the real
+ * validator; this only guarantees applyMessage NEVER mis-applies junk (NFR-02).
+ */
+function shapeOk(m: Message): boolean {
+	switch (m.type) {
+		case "hello":
+			return Array.isArray(m.workers) && (m.history === undefined || Array.isArray(m.history));
+		case "worker.upsert":
+			return typeof m.worker === "object" && m.worker !== null && typeof m.worker.id === "string";
+		case "worker.removed":
+			return typeof m.id === "string";
+		case "transcript.ref":
+			return typeof m.id === "string" && typeof m.sessionFile === "string";
+		case "topology":
+			return Array.isArray(m.paneIds) && (m.state === "open" || m.state === "closed");
+		case "notice":
+			return (
+				(m.level === "info" || m.level === "warn" || m.level === "error") &&
+				typeof m.message === "string"
+			);
+		default:
+			return false;
 	}
 }
