@@ -384,3 +384,75 @@ pane; cross-workspace focus held). FR-06 and FR-13 are now owner-witnessed.
 Owner UX feedback captured (multiple OMP subagents tabs observed; split opens a
 new tab rather than an in-tab split; request for an OMP-like list+detail layout
 and using OMP's plugin TUI lib) — under investigation as post-sign-off UX work.
+
+## Run G — v1.1 TUI installed-build verification (`RUN_E2E_LIVE=1`, 2026-11-25 ~23:03 UTC)
+
+First live run on the **upgraded install** (PR #9 merged `1d4511b`, remote upgrade
+23:02 UTC, doctor 5 ok; pi-tui/pi-wire 19.2.1 == installed omp/19.2.1, OI-4 re-pin).
+Disposable workspace **w1M** (`lens-e2e-2026-11-25T23-03-07-477Z`); agent
+`lense2e7477z` bound to session `01a214f2-df50-7750-bd70-25e79e6da780`.
+Evidence dir: `/var/folders/vm/tn_yl921169f6wxhx0h119th0000gn/T/lens-e2e-scratch-2026-11-25T23-03-07-477Z-73484/evidence/`.
+
+Result: **16 pass / 1 fail / 3 manual / 0 skipped** in ~829 s.
+
+Verbatim summary:
+
+```
+checks    : 16 pass, 1 fail, 3 manual, 0 skipped, 16 notes
+  [pass] s1 disposable workspace created — w1M
+  [pass] s1 omp launched (installed build) — agent=lense2e7477z session=01a214f2-…
+  [pass] s1 auto-open on first spawn — tab w1M:t2 pane w1M:p3
+  [pass] s1 no focus theft — focus stayed on wN:t1 (wN)
+  [pass] s1 U-HDR-1 viewer never agent — 1 viewer pane(s) report agent=null/undefined
+  [pass] s1 viewer connected, live worker listed — [connected] + workers (>=1)
+  [manual] s1 finished-collapse — collapse window missed (unit-covered)
+  [pass] s2 manual close honored — tab w1M:t2 closed
+  [pass] s2 worker survives viewer close (FR-14) — agent lense2e7477z still live
+  [pass] s2 exactly one overview tab reopened (FR-05) — tab w1M:t3
+  [pass] s2 no focus theft — focus stayed on wN:t1 (wN)
+  [pass] s2 U-HDR-1 viewer never agent
+  [note] s3 /lens registered — palette shows '/lens open the herdr-omp-lens overview…'
+  [manual] s3 read-only /lens split — timeout 150000ms ×2 (agent died mid-wait, see diagnosis)
+  [manual] s5 cross-workspace focus — prompt rejected early: agent_not_found lense2e7477z
+  [fail] s4 omp exited — agent still occupies the shell pane
+  [note] teardown disposable workspace already gone — w1M
+  [pass] s6 daily workspace untouched — 13 workspaces, 18 tabs, 19 panes — identical before/after
+  [pass] s6 no lens-e2e-* workspace left behind
+```
+
+### What Run G proves for v1.1
+
+- **The new two-column TUI passes every live token assertion** on the installed
+  build: `[connected]`, `workers (>=1):`, scoped-section tokens — the pi-tui
+  renderer preserves the machine-readable contract end-to-end (s1/s2 green).
+- **One-tab survivor fix (PR #8) holds live on 19.2.1**: close → exactly one
+  reopen (w1M:t3), no focus theft, viewer never an agent.
+- Installed-copy offline smoke (separate, controller-run): the *installed*
+  `renderTuiScreen` renders `│`-separated two columns with the OMP agent row
+  (`⣾ sleeper ⟦task⟧ [read-only] … 2 req · 1.4k tok · 7.5s`) — visual witness
+  of the layout itself; the harness's token greps don't capture the separator.
+
+### Diagnosis — env-coupled agent death, not a lens regression
+
+Session file ends with `custom session_exit {reason:"sighup", kind:"signal"}`
+at **23:13:13** — ~3 min after the bravo prompt completed (23:10:20), i.e.
+**during the s3 split-wait**. The lifecycle capture shows `workspace_closed`
+for w1M, then a transient workspace **w1N (label "~", cwd $HOME)** created and
+closed — neither created by the harness (its only `workspace create` calls are
+s0/s1 with the `lens-e2e-` label; teardown found w1M *already gone*). The SIGHUP
+killed the OMP agent, which cascaded: s3's `/lens split` could never execute
+(dead TUI), s5's prompt got `agent_not_found`, s4's `/exit` had nothing to exit.
+The workspace churn is consistent with **concurrent interactive use of the
+Herdr session during the unattended run** (owner active in the same window);
+recorded as env-coupled, never as a lens defect. The extension itself behaved
+correctly throughout: no focus theft, no duplicate tab, no worker side effects.
+
+- s3 stays manual for the *automated* step-pass; FR-06 is already
+  **owner-witnessed** (Part A update ~13:55 UTC, sleep-worker recipe).
+- s5 stays manual for this run only; FR-13 is already **owner-witnessed**
+  (Runs D/E + Part A).
+- s4's fail is the downstream of the same SIGHUP (agent pre-dead), on top of
+  the known local-build `-e` bind gap (FR-09, post-v1 ticket).
+
+**Rerun recipe (unchanged):** `RUN_E2E_LIVE=1 bash scripts/run-e2e.sh` inside a
+Herdr pane, with the Herdr session left idle for the ~10-minute run.
