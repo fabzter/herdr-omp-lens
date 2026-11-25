@@ -3,10 +3,10 @@
 > GENERATED FILE — do not edit. Regenerate with `bun scripts/gen-dod-report.ts`.
 > Owner sign-off (P6-R11): **UNSIGNED — the owner signs, the agent only prepares.** See §Sign-off.
 
-- Generated: 2026-11-25 · commit `7e8e131` · Bun 1.3.14
-- Environment: OMP **19.1.1** (installed; spec pin **19.0.1** — open owner decision OI-1) · Herdr **0.9.5**
+- Generated: 2026-11-25 · commit `d0108ed` · Bun 1.3.14
+- Environment: OMP **19.1.1** (installed; spec pin **19.0.1** — open owner decision OI-1) · Herdr **0.9.5** (probed live: `omp --version` / `herdr --version`)
 - Test gate: `bun test` → **460 pass / 0 fail** (155 suites, 1659 assertions)
-- Static gates: `bun run typecheck` clean · `bun run lint` clean (Checked 66 files in 22ms. No fixes applied.)
+- Static gates: `bun run typecheck` clean · `bun run lint` clean (Checked 66 files in 54ms. No fixes applied.)
 - Suite summary: `Ran 460 tests across 35 files. [3.86s]`
 
 ## Requirement matrix
@@ -245,7 +245,7 @@ Totals: **16 pass · 5 manual-evidence · 0 fail** out of 21 requirements.
 
 ### NFR-06 — Docs reconcile — docs match shipped behavior exactly · status: pass
 - manual: this report §Doc-vs-shipped checklist (DC-1..DC-21) — machine-asserted README/CONTRIBUTING/architecture sections contain shipped-truth content
-- manual: README.md §Verified commands — every documented command executed 2026-11-25 at 7e8e131, output quoted verbatim
+- manual: README.md §Verified commands — every documented command executed 2026-11-25 at commit 7e8e131, output quoted verbatim
 
 ## Safety-invariant sabotage proofs (P6-R2/R3)
 
@@ -262,7 +262,7 @@ suite went red, the output was captured, and the patch was reverted. Verbatim re
 | (f) FR-12 — OMP turn completes with Herdr/bridge dead | `src/` patch in tests/guards/sabotage.md §f | error: expect(received).not.toThrow() · (fail) P6-R2 invariant tamper tests > (f) FR-12: handlers never throw when bridge + Herdr are dead |
 | (g) F-15 — all `pi.on` / `pi.events.on` handlers enqueue synchronously, never await I/O | `src/` patch in tests/guards/sabotage.md §g | error: expect(received).toBeUndefined() · (fail) P6-R2 invariant tamper tests > (g) F-15: every pi.on / pi.events.on / command handler is synchronous |
 
-Clean restore verified: `git diff -- src/` empty; `7 pass, 0 fail, 83 expect() calls`.
+Clean restore: `git diff -- src/` empty; clean re-run `7 pass, 0 fail, 83 expect() calls` (parsed from tests/guards/sabotage.md).
 
 ## Live / witnessed captures (index)
 
