@@ -104,7 +104,7 @@ interface FakePi {
 	fireHook(event: string, payload: unknown): void;
 }
 
-function fakePi(withBusOff = true): FakePi {
+function fakePi(withBusOff = true, withBus = true): FakePi {
 	const bus = new FakeBus();
 	const commands: { name: string; definition: LensCommandDefinition }[] = [];
 	const hookHandlers = new Map<string, LensHookHandler[]>();
@@ -123,7 +123,7 @@ function fakePi(withBusOff = true): FakePi {
 			const i = list.indexOf(handler);
 			if (i >= 0) list.splice(i, 1);
 		},
-		events: withBusOff ? bus : { on: bus.on.bind(bus) },
+		events: !withBus ? undefined : withBusOff ? bus : { on: bus.on.bind(bus) },
 	};
 	return {
 		pi,
@@ -320,6 +320,47 @@ describe("startObservation", () => {
 		);
 		expect(bus.listeners("task:subagent:progress")).toBe(0);
 		expect(hookHandlers.get("before_subagent_spawn")).toHaveLength(0);
+	});
+
+	test("roster notices are broadcast to the bridge as warn notice messages", async () => {
+		const { pi, bus, fireHook } = fakePi();
+		const bridge = fakeBridgeFactory();
+		const obs = await startObservation(pi, CTX, { startBridge: bridge.factory });
+
+		fireHook("before_subagent_spawn", spawnPayload);
+		bus.emit("task:subagent:lifecycle", {
+			id: "w1",
+			agent: "scout",
+			status: "mystery-status",
+		});
+
+		// Unrecognized status: reducer keeps last known status and emits a
+		// notice — which must reach the viewer, not just the internal log.
+		const notice = bridge.broadcasts.find((m) => m.type === "notice");
+		expect(notice).toBeDefined();
+		if (notice?.type === "notice") {
+			expect(notice.level).toBe("warn");
+			expect(notice.message).toContain("mystery-status");
+		}
+		expect(obs.roster.snapshot()[0]?.status).toBe("queued");
+		await obs.stop();
+	});
+
+	test("absent pi.events degrades: one warn notice is broadcast after bridge start", async () => {
+		const { pi, hookHandlers } = fakePi(true, false);
+		const bridge = fakeBridgeFactory();
+		const obs = await startObservation(pi, CTX, { startBridge: bridge.factory });
+
+		// The spawn hook still subscribes; bus channels cannot.
+		expect(hookHandlers.get("before_subagent_spawn")).toHaveLength(1);
+		const notice = bridge.broadcasts.find((m) => m.type === "notice");
+		expect(notice).toBeDefined();
+		if (notice?.type === "notice") {
+			expect(notice.level).toBe("warn");
+			expect(notice.message.toLowerCase()).toContain("degraded");
+		}
+		expect(obs.roster.snapshot()).toHaveLength(0);
+		await obs.stop();
 	});
 });
 

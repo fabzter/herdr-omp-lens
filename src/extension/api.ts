@@ -44,6 +44,10 @@ export interface LensExtensionApi {
 	on(event: string, handler: LensHookHandler): void;
 	/** Detach a hook handler when the host exposes removal (best-effort). */
 	off?(event: string, handler: LensHookHandler): void;
-	/** Event bus for `task:subagent:*` channels. */
-	events: LensEventBus;
+	/**
+	 * Event bus for `task:subagent:*` channels. Optional: the surface is
+	 * undocumented (Phase 0), so consumers feature-detect and degrade to a
+	 * `notice` when absent (P2-R8) instead of throwing.
+	 */
+	events?: LensEventBus;
 }

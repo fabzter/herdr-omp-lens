@@ -105,6 +105,22 @@ export const startObservation: StartObservation = async (pi, _ctx, deps = {}) =>
 		throw err;
 	}
 
+	// Fail-soft visibility (P2-R8): reducer notices (e.g. unrecognized status)
+	// and missing-bus degradation must reach viewers, not just the internal
+	// roster log — the P3 viewer's degraded banner reads these notices.
+	roster.onNotice((message) => {
+		bridge.broadcast({ v: 1, type: "notice", level: "warn", message });
+	});
+	if (bus === undefined) {
+		bridge.broadcast({
+			v: 1,
+			type: "notice",
+			level: "warn",
+			message:
+				"degraded: pi.events task:subagent:* bus unavailable — live worker observation disabled",
+		});
+	}
+
 	let stoppedOnce = false;
 	return {
 		roster,
