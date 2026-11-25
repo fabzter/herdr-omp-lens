@@ -45,6 +45,7 @@ export type {
 	PaneMetadata,
 	SessionSnapshot,
 	Subscription,
+	TabInfo,
 } from "./herdr/types";
 export {
 	decodeClientMessage,

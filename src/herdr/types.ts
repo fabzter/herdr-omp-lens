@@ -12,9 +12,21 @@ export interface PaneInfo {
 	agent?: string;
 }
 
+/**
+ * A tab in the session snapshot. `label` is the tab's display label — the
+ * only reliable identity for the overview on Herdr 0.9.5, where snapshot
+ * pane `title` is always null (the one-tab regression: matching survivors
+ * by pane.title never matched, so every reopen spawned a duplicate tab).
+ */
+export interface TabInfo {
+	tabId: string;
+	workspaceId: string;
+	label?: string;
+}
+
 export interface SessionSnapshot {
 	workspaces: unknown[];
-	tabs: unknown[];
+	tabs: TabInfo[];
 	panes: PaneInfo[];
 }
 

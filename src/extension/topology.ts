@@ -318,14 +318,28 @@ export function createTopologyManager(
 		// close-before-subscribe race and a surviving pane from a previous
 		// session (D2 rebind), which gets a fresh viewer + env, never a second tab.
 		const snap = await adapter.snapshot();
-		// Exact title only: worker splits are titled
-		// `${OVERVIEW_TAB_LABEL} · <id>` and user panes may merely contain the
-		// label — adopting either would hijack a pane we don't own.
-		const survivor = snap.panes.find(
-			(p) => p.workspaceId === ctx.workspaceId && p.title === OVERVIEW_TAB_LABEL,
+		// Match the survivor by TAB label: session.snapshot pane.title is null
+		// on Herdr 0.9.5 (the report_metadata title never reaches snapshot
+		// panes), so a pane-title match never fires and every reopen spawned a
+		// duplicate "OMP subagents" tab. Exact label only — user tabs may merely
+		// contain the label, and adopting one would hijack a tab we don't own.
+		const survivors = snap.tabs.filter(
+			(t) => t.workspaceId === ctx.workspaceId && t.label === OVERVIEW_TAB_LABEL,
 		);
-		if (survivor !== undefined) {
-			overview = { tabId: survivor.tabId, paneId: survivor.paneId };
+		if (survivors.length > 1) {
+			// The pane-title regression already minted duplicates. Rebind the
+			// FIRST — never mint yet another (FR-04/FR-05 one-tab).
+			notice(
+				"warn",
+				`${survivors.length} "${OVERVIEW_TAB_LABEL}" tabs found; rebinding the first, ` +
+					"leaving the extras for the user",
+			);
+		}
+		const survivorTab = survivors[0];
+		const survivor =
+			survivorTab === undefined ? undefined : snap.panes.find((p) => p.tabId === survivorTab.tabId);
+		if (survivor !== undefined && survivorTab !== undefined) {
+			overview = { tabId: survivorTab.tabId, paneId: survivor.paneId };
 			// P4-R4/F-11: env is honored only at tab.create — the relaunch must
 			// carry the NEW session's LENS_* inline, else the viewer dials the dead socket.
 			const survivorBaseline = viewerCount?.();
@@ -340,6 +354,8 @@ export function createTopologyManager(
 			emitTopology("open");
 			return overview;
 		}
+		// A labeled tab with no panes at all is degenerate (a tab cannot live
+		// without a root pane in practice) — fall through to create our own.
 
 		state = "opening";
 		const { tabId, rootPaneId } = await adapter.createOverviewTab(OVERVIEW_TAB_LABEL, viewerEnv());
