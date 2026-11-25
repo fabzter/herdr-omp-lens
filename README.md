@@ -14,48 +14,196 @@ OMP stays the boss. It owns the workers and their results. This is just a window
 
 ## Status
 
-🛠️ **Building v1.** The design is approved, the native event surface is probed and confirmed, an
-adversarial review (18 findings) is fully addressed, and the **P1 foundation is implemented and
-reviewed clean** on `feat/v1-foundation` — package/toolchain, the versioned NDJSON bridge protocol,
-the guarded no-focus Herdr adapter, lifecycle subscription with `events_lost` recovery, and the
-activation gate. 96 tests green; `tsc` and `biome` clean. Nothing is installed into your daily
-session yet.
+🪟 **v1 "The Window" is implemented.** 460 tests across 35 files are green; `tsc --noEmit` and
+`biome check` are clean. The evidence pack for the v1 Definition of Done lives in
+[`docs/analysis/dod-v1-report.md`](docs/analysis/dod-v1-report.md) and is **awaiting owner
+sign-off** — design, hardening and clean-profile install are complete, but the owner spot-witnesses
+the live Herdr lifecycle steps listed in the report's open items before v1 is declared done.
 
-- **v1 — "The Window":** read-only observation. One overview tab + optional splits, auto-open and
-  reopen-on-next-subtask, OMP-like detail, finished workers tucked away, history you can revisit.
-- **v2 — "The Console" (horizon):** safe interactive control — steer, follow up, revive, stop —
-  routed back to the session that owns the worker.
+- **v1 — "The Window" (this release):** read-only observation of the current session's direct task
+  workers. One overview tab + optional splits, auto-open and reopen-on-next-subtask, OMP-like detail,
+  finished workers tucked away, persisted history you can revisit.
+- **v2 — "The Console" (horizon, not started):** safe interactive control — steer, follow up,
+  revive, stop — routed back to the session that owns the worker.
 
-## What it will feel like
+## What you get
 
-You ask OMP to parallelize a job. A quiet `OMP subagents` tab appears in your workspace — your cursor
-never moves. You glance over: three workers running, one already done. You pop the interesting one
-into a split, read its transcript like you would in OMP's own Agent Hub, then close the split. The
-worker keeps going. Closing a window never stops the work.
+- **`OMP subagents`** — one tab in `$HERDR_WORKSPACE_ID`, opened with `--no-focus` the first time a
+  direct worker spawns in your OMP session.
+- **Reopen on the next subtask.** Close the tab and the *next* spawn reopens exactly one — never two,
+  even under concurrent spawn events.
+- **Worker split.** `/lens split <workerId>` pops that worker into a no-focus worker-scoped split.
+  Closing the split never touches the worker.
+- **OMP-like detail.** Status, agent, model, age, usage counters when the bus exposes them, current
+  activity/tool, lineage, and a live transcript rendered with `omp render <sessionFile>`.
+- **Finished collapse.** Completed workers are tucked into a collapsed section by default;
+  `e` expands them.
+- **History that knows it's history.** After an OMP restart the saved transcripts are still there,
+  labelled **not live** — the viewer never implies execution that isn't happening.
+- **Degraded mode (D1).** If the native `task:subagent:*` bus is unavailable, you get one warn
+  notice and workers are discovered by scanning the verified session-artifact directory instead.
+  If Herdr or the bridge dies mid-turn, your OMP turn completes normally.
 
-## Principles
+Keyboard, read-only by construction: `j`/`k` or `↑`/`↓` select, `e`/`Enter`/`Space` toggle the
+finished section, `t` toggles thinking display (hidden by default), `r` refreshes, `q`/`Ctrl-C`
+quits. There is no key that sends anything to a worker.
 
-- **OMP owns execution.** We observe; we never duplicate or hijack workers.
-- **Closing a view never cancels a worker.** A window is not a leash.
-- **No focus theft.** Everything opens in the background.
-- **Local only.** A unix socket on your machine. No relay, no cloud.
-- **Fail soft.** If Herdr or the bridge hiccups, OMP keeps working.
-- **Read-only first.** Control comes later, carefully, with confirmation.
+## Install
 
-## Documentation
+Requires a Herdr-managed pane for activation (`HERDR_ENV=1`); outside Herdr the extension is a no-op.
 
-- [Software Design Document](docs/superpowers/specs/2026-11-19-herdr-omp-lens-design.md) — the source of truth.
-- [Master plan](docs/plans/00-master-plan.md) — v1/v2 horizon, phases, Definition of Done.
-- [P1 implementation plan](docs/superpowers/plans/2026-11-24-v1-foundation.md) — the foundation, task by task.
-- [Seam research](docs/analysis/research-seams.md) — cited evidence for what OMP and Herdr expose.
-- [Adversarial review](docs/analysis/review-agy-hydrogen-2026-11-24.md) — the 18 findings and how they were fixed.
-- [ADR-0001](docs/adr/0001-observation-seam.md) — why an in-process extension + local bridge.
-- [Contributing](CONTRIBUTING.md) — dev setup, tests, and review gates.
+```sh
+# from a clone of this repo
+omp plugin link /path/to/herdr-omp-lens
+```
+
+> **Inside a Herdr pane, strip `HERDR_*` for the install command.** The link installer waits on
+> subprocess handles that a running extension keeps open, so `plugin link` otherwise appears to hang
+> (~1.5 s with the strip):
+>
+> ```sh
+> env -u HERDR_ENV -u HERDR_PANE_ID -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID \
+>     -u HERDR_SOCKET_PATH -u HERDR_BIN_PATH \
+>     omp plugin link /path/to/herdr-omp-lens
+> ```
+>
+> This is install-time only; runtime inside Herdr is unaffected. To keep a daily profile untouched,
+> link into a disposable profile instead: `omp --profile=<name> plugin link <path>` (the `--profile`
+> flag must come *before* the subcommand).
+
+## Use
+
+Open the overview any time with the read-only slash command:
+
+| Command | Effect |
+| --- | --- |
+| `/lens` | Open the overview (no-op if already open; never moves focus). Unknown arguments behave like `/lens`. |
+| `/lens split <workerId>` | Open a no-focus, worker-scoped split for that worker. `/lens split` with no id does nothing. |
+
+Both are no-ops until OMP has handed the extension a session id (the first `session_start`), and
+both are read-only: v1 has no steer/revive/cancel affordance, and the bridge rejects every
+`control.*` frame at the handshake boundary.
+
+**Scope:** v1 shows the **direct** `task` workers of the **current** OMP session. Nested children and
+other sessions' workers are excluded by design. Workers that were already running before the
+extension activated are not retroactively observed (there is no registry snapshot to read — see
+limitations).
+
+## How it works
+
+An in-process OMP extension subscribes to `task:subagent:{event,progress,lifecycle}` through
+`pi.events`, keeps a direct-worker roster, and publishes it over a **local unix-socket NDJSON
+bridge** (per-session `0700` dir, socket `0600`, unlinked on exit). A small viewer CLI — launched by
+the extension into the Herdr tab through the guarded, no-focus adapter — connects, receives a
+`hello` snapshot plus deltas, and renders roster + transcript. Nothing is spawned by the viewer and
+nothing leaves the machine.
+
+See [`docs/architecture.md`](docs/architecture.md) for the component map, data flow, invariants and
+degraded-mode behavior, and the [SDD](docs/superpowers/specs/2026-11-19-herdr-omp-lens-design.md) for
+the full design.
 
 ## Requirements
 
-- OMP 19.0.1 and Herdr 0.9.5 (the versions this design is pinned to and probed against).
-- macOS or Linux; a Herdr-managed pane (`HERDR_ENV=1`). Outside Herdr, the extension does nothing.
+- **OMP 19.1.1** (installed and measured) — the design is pinned to **19.0.1**; the drift is an
+  **open owner decision** recorded in
+  [`docs/analysis/clean-profile-install.md`](docs/analysis/clean-profile-install.md) §1. No
+  regression was observed on 19.1.1, but the gate is evidence on the drifted version.
+- **Herdr 0.9.5** (the version probed against).
+- macOS or Linux, [Bun](https://bun.sh) on `PATH` (the viewer runs under `bun`), and a Herdr-managed
+  pane (`HERDR_ENV=1`).
+
+## Verified commands
+
+Every command below was executed on 2026-11-25 at commit `7e8e131` (OMP 19.1.1 / Herdr 0.9.5) and
+its output is quoted verbatim. Regenerate the evidence report with `bun scripts/gen-dod-report.ts`.
+
+```console
+$ bun test
+ 460 pass
+ 0 fail
+ 1659 expect() calls
+Ran 460 tests across 35 files. [3.93s]
+
+$ bun run typecheck          # tsc --noEmit — clean, no output
+
+$ bun run lint
+$ biome check src tests
+Checked 66 files in 52ms. No fixes applied.
+
+$ bun src/viewer/cli.ts      # no LENS_* env — usage error, exit 2, no connection
+usage: bun src/viewer/cli.ts [--worker <id>] (env: LENS_SOCKET_PATH, LENS_SESSION[, LENS_WORKER_ID])
+
+$ env -u HERDR_ENV -u HERDR_PANE_ID -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID \
+      -u HERDR_SOCKET_PATH -u HERDR_BIN_PATH \
+      omp --profile=p6t7-clean plugin link /Users/fabzter/src/omp-fabz-improvements
+✔ Linked herdr-omp-lens from /Users/fabzter/src/omp-fabz-improvements
+
+$ omp --profile=p6t7-clean plugin list --json
+{ "npm": [ { "name": "herdr-omp-lens", "version": "0.1.0", "path":
+  ".../profiles/p6t7-clean/plugins/node_modules/herdr-omp-lens",
+  "manifest": { "extensions": ["./src/extension/index.ts"], "version": "0.1.0" },
+  "enabled": true } ], "marketplace": [] }
+
+_Above JSON is abridged for readability — the verbatim, unabridged output is recorded in
+[docs/analysis/clean-profile-install.md](docs/analysis/clean-profile-install.md) §2._
+
+$ bash scripts/run-e2e.sh    # recorded run, verbatim summary — docs/analysis/e2e-evidence.md Run A
+exit code: 0   (7 pass / 0 fail / 0 manual / 5 skipped)
+```
+
+The slash commands cannot be typed from a shell (they run inside the OMP TUI). Their dispatch and
+no-op semantics are pinned by `tests/extension/lens-commands.test.ts`; their live effect was
+witnessed in an interactive TUI session:
+`herdr pane read` → `omp lens — session 01a210e2-5995-74b7-99d0-1acf4182b855 [connected]`
+(see [`docs/analysis/phase-0-caveat-closure.md`](docs/analysis/phase-0-caveat-closure.md) §Caveat 1)
+and in the clean-profile run (`OMP subagents` tab `w11:t2`, viewer `w11:p2`, focus held in `wN` —
+[`docs/analysis/clean-profile-install.md`](docs/analysis/clean-profile-install.md) §3). The live E2E
+step that drives `/lens split` (s3) is still pending owner witness — see
+[`docs/analysis/dod-v1-report.md`](docs/analysis/dod-v1-report.md) §Open items.
+
+## Limitations
+
+Recorded known limitations. Each is either a deliberate v1 boundary or an honest gap with a named
+capture; none is a silent pass.
+
+1. **History caveat (R-04): live counters are not reconstructable.** Persisted JSONL carries the
+   roster fields and terminal status, but not the live `counters` stream. Historical rows show
+   `counters` absent and are labelled *not live*; a restart shows what happened, not live usage.
+2. **`queued`, `idle`, `parked` transitions.** These statuses are mapped verbatim if OMP emits them,
+   but no reachable trigger was found on 19.1.1: a parallel two-agent `task` batch emits `queued`
+   nowhere, and completed agents are reaped without a `parked` frame. Recorded in
+   [`docs/analysis/phase-0-caveat-closure.md`](docs/analysis/phase-0-caveat-closure.md) §Caveat 2.
+3. **TUI `detached` variance.** The `detached` flag is present on every lifecycle/progress frame and
+   is deliberately unconsumed, so TUI async-spawn variance is harmless — but unverified.
+4. **Pre-activation workers (U-OMP-5).** There is no registry snapshot for extensions; a worker that
+   started before the extension activated never appears.
+5. **Transient finished-collapse.** The collapsed section is a live UI state: reaping can be faster
+   than a readback, so a green E2E run does not imply it was *seen* — it is unit-covered and reported
+   as such, never as a witnessed pass.
+6. **Herdr-restart restore is out of scope for v1.** A surviving *OMP* viewer tab is reused and
+   rebound to the new bridge socket on restart; restoring the viewer layout after a *Herdr* server
+   restart is a v2 horizon item.
+7. **Version drift.** Evidence was collected on OMP **19.1.1 / Herdr 0.9.5** while the design pins
+   OMP **19.0.1**. Re-pin vs. re-verify is an open owner decision (open item OI-1).
+8. **Owner live-witness pending.** E2E steps s2–s5 (close→reopen, `/lens split`, restart→history,
+   cross-workspace focus) are scripted and routed, but the owner has not yet spot-witnessed them
+   live; the DoD report records them as `manual-evidence`, not `pass`.
+9. **Deferred review minors.** Small, non-blocking follow-ups recorded across the hardening reviews
+   (list in the DoD report §Open items, OI-3) remain for triage; each has a sibling assertion or a
+   bounded failure mode.
+
+## Documentation
+
+- [DoD-v1 evidence report](docs/analysis/dod-v1-report.md) — the generated requirement matrix and sign-off block.
+- [Architecture notes](docs/architecture.md) — components, data flow, invariants, degraded mode.
+- [Software Design Document](docs/superpowers/specs/2026-11-19-herdr-omp-lens-design.md) — the source of truth.
+- [Master plan](docs/plans/00-master-plan.md) — v1/v2 horizon, phases, Definition of Done.
+- [Phase 0 caveat closure](docs/analysis/phase-0-caveat-closure.md) — what the bus really emits, with captures.
+- [Isolated-session E2E evidence](docs/analysis/e2e-evidence.md) — runs, findings, pending live steps.
+- [Clean-profile install + version discipline](docs/analysis/clean-profile-install.md) — FR-15/NFR-02 evidence.
+- [Seam research](docs/analysis/research-seams.md) — cited evidence for what OMP and Herdr expose.
+- [ADR-0001](docs/adr/0001-observation-seam.md) — why an in-process extension + local bridge.
+- [Contributing](CONTRIBUTING.md) — dev setup, tests, review gates.
 
 ## License
 

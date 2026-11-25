@@ -34,21 +34,40 @@ Toolchain: [Bun](https://bun.sh). OMP runs TypeScript directly, so a build step 
 bun install
 bun test            # unit + tamper tests
 bun run typecheck   # tsc --noEmit
-bun run lint
+bun run lint        # biome check src tests
+```
+
+**DoD-v1 report.** Regenerate the requirement→evidence matrix — runs the suite and asserts every
+cited test exists and passes:
+
+```sh
+bun scripts/gen-dod-report.ts   # writes docs/analysis/dod-v1-report.md
 ```
 
 Load the extension into a throwaway OMP session for manual checks:
 
 ```sh
-omp --extension ./src/extension/index.ts
+omp --extension ./src/extension/index.ts        # print mode
 ```
 
-Integration tests run in an **isolated named Herdr session** so they never touch your daily workspace:
+Integration tests run in a **disposable named Herdr session** so they never touch your daily
+workspace. The default run is safe (create/enumerate/close + daily-workspace diff); set
+`RUN_E2E_LIVE=1` for the full lifecycle drive inside a Herdr pane:
 
 ```sh
-herdr --session lens-test   # create/attach a scratch session
-# run the integration suite against it, then stop it
-herdr session stop lens-test
+bash scripts/run-e2e.sh                  # safe disposable round-trip
+RUN_E2E_LIVE=1 bash scripts/run-e2e.sh   # full lifecycle (owner-witnessed step set)
+```
+
+Evidence and results are recorded in `docs/analysis/e2e-evidence.md`.
+
+Install-time quirk: `omp plugin link` inside a Herdr pane hangs on the loaded extension's socket
+handles. Strip `HERDR_*` first (runtime is unaffected):
+
+```sh
+env -u HERDR_ENV -u HERDR_PANE_ID -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID \
+    -u HERDR_SOCKET_PATH -u HERDR_BIN_PATH \
+    omp plugin link <path>
 ```
 
 ## Testing rules
@@ -56,7 +75,9 @@ herdr session stop lens-test
 - **Failing test first.** Write the test, watch it fail, implement, watch it pass. Quote the output.
 - **Tamper tests** must fail on the broken state (e.g. worker survives viewer close; no duplicate
   worker; no focus theft; `control` frames rejected in v1). A guard test that can't fail is worthless.
-- **Isolated-session E2E** for anything touching Herdr topology. Never mutate the user's real session.
+  Proven red runs are recorded in `tests/guards/sabotage.md`.
+- **Isolated-session E2E** for anything touching Herdr topology. Never mutate the user's real
+  session; the disposable `lens-e2e-*` workspace is the proof surface.
 
 ## Commits & reviews
 

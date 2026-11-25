@@ -119,10 +119,11 @@ describe("lensExtension gate", () => {
 		expect(calls.commands[0]?.name).toBe("lens");
 		expect(calls.commands[0]?.handlerInvocable).toBe(true);
 		// P2-4/P4-3: activation is delegated to startObservation (stubbed) — the
-		// gate registers /lens + /lens split and the session_start capture hook;
-		// bus/spawn-hook subscriptions live in observe/.
+		// gate registers /lens + /lens split, the session_start capture hook and
+		// the session_shutdown teardown hook (P6-R5); bus/spawn-hook
+		// subscriptions live in observe/.
 		expect(activated).toBe(1);
-		expect(calls.hooks).toEqual(["session_start"]);
+		expect(calls.hooks).toEqual(["session_start", "session_shutdown"]);
 		expect(calls.busSubs).toHaveLength(0);
 	});
 });
