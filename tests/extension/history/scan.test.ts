@@ -153,6 +153,45 @@ describe("createHistorySource.scan", () => {
 		expect(w).toBeDefined();
 		expect(w?.model).toBeUndefined(); // marker lay beyond the byte budget
 	});
+	test("terminal marker beyond the head cap still maps via bounded tail read (P5-R4)", async () => {
+		const tree = makeFixtureTree();
+		const s1 = tree.sessionDirs[0];
+		if (s1 === undefined) throw new Error("fixture must have session dirs");
+		// Worker transcript > 1024 bytes: header + model_change in the head
+		// window, a wall of padding messages pushing session_exit (the LAST
+		// line, kind:"normal") well past the head cap.
+		const lines = [
+			JSON.stringify({
+				type: "session",
+				version: 3,
+				id: "wbig",
+				cwd: PROJECT_CWD,
+				parentSession: `${tree.projectDir}/${SESSION_1}.jsonl`,
+			}),
+			JSON.stringify({
+				type: "model_change",
+				model: "devin/swe-2",
+				role: "subagent:wbig",
+			}),
+		];
+		for (let i = 0; i < 30; i++) {
+			lines.push(JSON.stringify({ type: "message", role: "assistant", pad: "x".repeat(40) }));
+		}
+		lines.push(
+			JSON.stringify({
+				type: "custom",
+				customType: "session_exit",
+				data: { reason: "dispose", kind: "normal", recordedAt: 1700000001000 },
+			}),
+		);
+		writeFileSync(join(s1, "wbig.jsonl"), `${lines.join("\n")}\n`);
+		const src = createHistorySource({ sessionsRoot: tree.sessionsRoot });
+		const scan = await src.scan(PROJECT_CWD, { maxFileBytes: 1024 });
+		const w = scan.workers.find((x) => x.id === "wbig");
+		expect(w).toBeDefined();
+		expect(w?.model).toBe("devin/swe-2"); // head window still mapped
+		expect(w?.status).toBe("completed"); // marker lives in the tail window
+	});
 
 	test("stat seam probes the stray.jsonl directory (isDirectory guard exercised)", async () => {
 		const tree = makeFixtureTree();

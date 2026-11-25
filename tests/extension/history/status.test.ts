@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { mapTerminalStatus, mapTranscriptToSnapshot } from "../../../src/extension/history";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+	boundedTailReadFile,
+	mapTerminalStatus,
+	mapTranscriptToSnapshot,
+} from "../../../src/extension/history";
 
 /**
  * Fixture shape mirrors a real worker JSONL (verified 2026-11-24):
@@ -96,5 +103,26 @@ describe("mapTranscriptToSnapshot status mapping (P5-R4)", () => {
 			PROJECT_DIR,
 		);
 		expect(w?.status).toBe("aborted");
+	});
+});
+describe("statusLines tail window (P5-R4, review round 1)", () => {
+	test("status derives from tail lines when provided, not the head", () => {
+		// Head window: header + torn tail, marker truncated away. Tail
+		// window: carries the session_exit marker.
+		const head = [header("wb"), modelChange("wb"), '{"type":"mess'];
+		const tail = ["", sessionExit("normal")];
+		const w = mapTranscriptToSnapshot("wb", "/s/wb.jsonl", head, 1, PROJECT_DIR, tail);
+		expect(w?.status).toBe("completed");
+		expect(w?.model).toBe("devin/swe-2"); // head still drives model
+	});
+
+	test("boundedTailReadFile returns only the last maxBytes bytes", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "omp-lens-tail-"));
+		const p = join(dir, "t.jsonl");
+		writeFileSync(p, `${"a".repeat(50)}\n${sessionExit("normal")}\n`);
+		const tail = await boundedTailReadFile(p, "utf8", 90);
+		expect(tail.length).toBe(90);
+		expect(tail).toContain("session_exit");
+		expect(tail.endsWith("\n")).toBe(true);
 	});
 });

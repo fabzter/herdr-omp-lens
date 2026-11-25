@@ -27,6 +27,7 @@ export interface HistorySource {
 export { mergeLiveAndHistorical, transcriptRefFor } from "./merge";
 export {
 	boundedReadFile,
+	boundedTailReadFile,
 	createHistorySource,
 	encodeCwdSlug,
 	type HistoryDeps,

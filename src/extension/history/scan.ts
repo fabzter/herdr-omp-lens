@@ -35,7 +35,9 @@ export interface HistoryDeps {
 	readDir?: (path: string) => Promise<string[]>;
 	/** Transcript reader; `maxBytes` bounds the I/O when provided. */
 	readFile?: (path: string, encoding: "utf8", maxBytes?: number) => Promise<string>;
-	stat?: (path: string) => Promise<{ mtimeMs: number; isDirectory(): boolean }>;
+	/** End-of-file reader for the terminal-marker window (default boundedTailReadFile). */
+	readFileTail?: (path: string, encoding: "utf8", maxBytes?: number) => Promise<string>;
+	stat?: (path: string) => Promise<{ mtimeMs: number; size?: number; isDirectory(): boolean }>;
 }
 
 /** Absolute cwd with every "/" replaced by "-" (verified 2026-11-24). */
@@ -58,6 +60,31 @@ export async function boundedReadFile(
 	try {
 		const buf = Buffer.allocUnsafe(maxBytes);
 		const { bytesRead } = await fh.read(buf, 0, maxBytes, 0);
+		return buf.subarray(0, bytesRead).toString("utf8");
+	} finally {
+		await fh.close();
+	}
+}
+
+/**
+ * Tail counterpart of `boundedReadFile`: reads at most `maxBytes` bytes from
+ * the END of the file (position `size - maxBytes` via fh.read), utf8-decoded.
+ * Needed because the verified `session_exit` terminal marker is the LAST
+ * line — a head-only read truncates it away on transcripts > cap and
+ * mislabels completed workers as aborted (P5-R4, review round 1).
+ */
+export async function boundedTailReadFile(
+	path: string,
+	_encoding: "utf8",
+	maxBytes: number,
+): Promise<string> {
+	if (maxBytes <= 0) return "";
+	const fh = await open(path, "r");
+	try {
+		const { size } = await fh.stat();
+		const pos = Math.max(0, size - maxBytes);
+		const buf = Buffer.allocUnsafe(Math.min(maxBytes, size));
+		const { bytesRead } = await fh.read(buf, 0, buf.length, pos);
 		return buf.subarray(0, bytesRead).toString("utf8");
 	} finally {
 		await fh.close();
@@ -126,6 +153,12 @@ export function mapTranscriptToSnapshot(
 	lines: string[],
 	mtimeMs: number,
 	projectDir: string,
+	/**
+	 * Lines to derive status from — normally a bounded TAIL window so the
+	 * last-line session_exit marker survives the head cap (P5-R4). Defaults
+	 * to `lines` when no tail was read.
+	 */
+	statusLines?: string[],
 ): WorkerSnapshot | null {
 	let header: SessionHeader | null = null;
 	let agent = "task";
@@ -160,7 +193,7 @@ export function mapTranscriptToSnapshot(
 	const snapshot: WorkerSnapshot = {
 		id: workerId,
 		agent,
-		status: mapTerminalStatus(lines), // P5-R4 honest terminal-marker mapping
+		status: mapTerminalStatus(statusLines ?? lines), // P5-R4 honest marker mapping
 		sessionFile,
 		historical: true,
 		updatedAt: mtimeMs,
@@ -184,6 +217,7 @@ export function createHistorySource(deps: HistoryDeps = {}): HistorySource {
 	const readDir = deps.readDir ?? readdir;
 	const readFileSeam = deps.readFile ?? boundedReadFile;
 	const statSeam = deps.stat ?? stat;
+	const readFileTailSeam = deps.readFileTail ?? boundedTailReadFile;
 
 	return {
 		scan: async (cwd, opts) => {
@@ -235,10 +269,12 @@ export function createHistorySource(deps: HistoryDeps = {}): HistorySource {
 					if (!child.endsWith(".jsonl")) continue; // *.md, *.lock.os, noise
 					const sessionFile = join(sessionDir, child);
 					let mtimeMs: number;
+					let fileSize: number | undefined;
 					try {
 						const s = await statSeam(sessionFile);
 						if (s.isDirectory()) continue; // subdirectory, never a transcript
 						mtimeMs = s.mtimeMs;
+						fileSize = s.size;
 					} catch (err) {
 						warnings.push(`history scan: ${sessionFile} unstat-able: ${describeErr(err)}`);
 						continue;
@@ -256,6 +292,23 @@ export function createHistorySource(deps: HistoryDeps = {}): HistorySource {
 						content = content.slice(0, maxFileBytes);
 					}
 
+					// Bounded TAIL window for the terminal marker (P5-R4): the
+					// verified session_exit line is the transcript's LAST line,
+					// so a head-capped read truncates it on files > cap. Fails
+					// soft to head-only status (conservative "aborted") on error.
+					let statusLines: string[] | undefined;
+					if (fileSize !== undefined && fileSize > maxFileBytes) {
+						try {
+							let tail = await readFileTailSeam(sessionFile, "utf8", maxFileBytes);
+							if (tail.length > maxFileBytes) {
+								tail = tail.slice(-maxFileBytes);
+							}
+							statusLines = tail.split("\n");
+						} catch (err) {
+							warnings.push(`history scan: ${sessionFile} tail unreadable: ${describeErr(err)}`);
+						}
+					}
+
 					const workerId = child.slice(0, -".jsonl".length);
 					const snapshot = mapTranscriptToSnapshot(
 						workerId,
@@ -263,6 +316,7 @@ export function createHistorySource(deps: HistoryDeps = {}): HistorySource {
 						content.split("\n"),
 						mtimeMs,
 						projectDir,
+						statusLines,
 					);
 					if (snapshot !== null) workers.push(snapshot);
 				}
