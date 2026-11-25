@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import lensExtension from "../../src/extension";
 import type { LensExtensionApi } from "../../src/extension/api";
+import type { Observation, StartObservation } from "../../src/extension/observe";
+import { Roster } from "../../src/extension/roster";
 
 const HERDR_VARS = [
 	"HERDR_ENV",
@@ -91,17 +93,36 @@ describe("lensExtension gate", () => {
 		expect(calls.busSubs).toHaveLength(0);
 	});
 
-	test("registers the /lens command once when the full Herdr env is present", () => {
+	test("registers /lens and activates observation when the full Herdr env is present", () => {
 		setEnv(FULL_ENV);
 		const { pi, calls } = fakePi();
+		let activated = 0;
+		const startObservation = (async (): Promise<Observation> => {
+			activated++;
+			return {
+				roster: new Roster(),
+				bridge: {
+					socketPath: "/stub/bridge.sock",
+					broadcast() {},
+					viewerCount() {
+						return 0;
+					},
+					async close() {},
+				},
+				async stop() {},
+			};
+		}) satisfies StartObservation;
 
-		lensExtension(pi);
+		lensExtension(pi, { startObservation });
 
 		expect(calls.commands).toHaveLength(1);
 		expect(calls.commands[0]?.name).toBe("lens");
 		expect(calls.commands[0]?.handlerInvocable).toBe(true);
-		// P1 registers the command placeholder only — no hook or bus subscriptions yet.
-		expect(calls.hooks).toHaveLength(0);
+		// P2-4/P4-3: activation is delegated to startObservation (stubbed) — the
+		// gate registers /lens + /lens split and the session_start capture hook;
+		// bus/spawn-hook subscriptions live in observe/.
+		expect(activated).toBe(1);
+		expect(calls.hooks).toEqual(["session_start"]);
 		expect(calls.busSubs).toHaveLength(0);
 	});
 });

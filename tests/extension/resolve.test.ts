@@ -7,12 +7,16 @@ import { resolveViewerCommand } from "../../src/extension/resolve";
 const PACKAGE_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
 describe("resolveViewerCommand", () => {
-	test("returns an absolute path to src/viewer/cli.ts under the package root", () => {
+	test("returns a runnable `bun <abs path to src/viewer/cli.ts>` invocation", () => {
 		const command = resolveViewerCommand();
 
-		expect(isAbsolute(command)).toBe(true);
-		expect(command.endsWith(`src${sep}viewer${sep}cli.ts`)).toBe(true);
-		expect(command).toBe(resolve(PACKAGE_ROOT, "src/viewer/cli.ts"));
+		// pane.send_input is shell text: the command word must be executable —
+		// a bare non-executable .ts path cannot be launched by a shell.
+		expect(command.startsWith("bun ")).toBe(true);
+		const scriptPath = command.slice("bun ".length);
+		expect(isAbsolute(scriptPath)).toBe(true);
+		expect(scriptPath.endsWith(`src${sep}viewer${sep}cli.ts`)).toBe(true);
+		expect(command).toBe(`bun ${resolve(PACKAGE_ROOT, "src/viewer/cli.ts")}`);
 	});
 
 	test("is independent of process.cwd()", () => {

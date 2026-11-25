@@ -9,8 +9,23 @@
  * an OMP turn is never blocked (FR-12 / F-15).
  */
 
-/** Handler for a `/`-command invocation; receives the raw argument tail. */
-export type LensCommandHandler = (args: string) => void;
+/**
+ * Structural subset of the OMP handler ctx the lens reads: session identity
+ * only (`ctx.sessionManager.getSessionId()` — RC-4's LENS_SESSION source).
+ * OMP's real `ExtensionContext`/`ExtensionCommandContext` satisfies this
+ * structurally; all members optional so partial test doubles type-check.
+ */
+export interface LensContext {
+	sessionManager?: {
+		getSessionId?(): string;
+	};
+}
+
+/**
+ * Handler for a `/`-command invocation; receives the raw argument tail plus
+ * the OMP handler ctx (session identity lives there — see LensContext).
+ */
+export type LensCommandHandler = (args: string, ctx?: LensContext) => void;
 
 /** Slash-command registration passed to `pi.registerCommand`. */
 export interface LensCommandDefinition {
@@ -19,8 +34,7 @@ export interface LensCommandDefinition {
 }
 
 /** OMP lifecycle hook handler (`pi.on`). Fire-and-forget. */
-export type LensHookHandler = (event: unknown) => void;
-
+export type LensHookHandler = (event: unknown, ctx?: LensContext) => void;
 /**
  * Undocumented event-bus surface (`pi.events`): carries the
  * `task:subagent:{lifecycle,progress,event}` channels observed in Phase 0.
@@ -28,6 +42,12 @@ export type LensHookHandler = (event: unknown) => void;
  */
 export interface LensEventBus {
 	on(channel: string, handler: (payload: unknown) => void): void;
+	/**
+	 * Detach a channel handler when the host bus exposes removal. Optional:
+	 * the bus surface is undocumented (Phase 0), so consumers also guard
+	 * handlers with a stopped flag for a deterministic `stop()`.
+	 */
+	off?(channel: string, handler: (payload: unknown) => void): void;
 }
 
 /** The subset of `ExtensionAPI` the lens extension touches. */
@@ -36,6 +56,12 @@ export interface LensExtensionApi {
 	registerCommand(name: string, definition: LensCommandDefinition): void;
 	/** Subscribe to an OMP lifecycle hook (e.g. `before_subagent_spawn`). */
 	on(event: string, handler: LensHookHandler): void;
-	/** Event bus for `task:subagent:*` channels. */
-	events: LensEventBus;
+	/** Detach a hook handler when the host exposes removal (best-effort). */
+	off?(event: string, handler: LensHookHandler): void;
+	/**
+	 * Event bus for `task:subagent:*` channels. Optional: the surface is
+	 * undocumented (Phase 0), so consumers feature-detect and degrade to a
+	 * `notice` when absent (P2-R8) instead of throwing.
+	 */
+	events?: LensEventBus;
 }
