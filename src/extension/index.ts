@@ -1,11 +1,16 @@
-import { callerContext } from "../herdr/context";
-import type { LensExtensionApi } from "./api";
+import { type CallerContext, callerContext } from "../herdr/context";
+import type { Message } from "../protocol/types";
+import type { LensContext, LensExtensionApi } from "./api";
+import { startBridge } from "./bridge";
+import { createHistoryStub, type HistoryScan, type HistorySource } from "./history-stub";
 import {
 	type Observation,
 	type ObservationDeps,
 	type StartObservation,
 	startObservation,
 } from "./observe";
+import { resolveViewerCommand } from "./resolve";
+import { createTopologyManager, type TopologyDeps, type TopologyManager } from "./topology";
 
 /**
  * OMP extension entry (bound via package.json `omp.extensions`).
