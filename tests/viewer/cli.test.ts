@@ -405,4 +405,81 @@ describe("runViewer — scripted session", () => {
 		expect(connected).toBe(false);
 		expect(errors.join("")).toContain("LENS_SOCKET_PATH");
 	});
+
+	test("stamp-only upserts single-flight renders and keep last good text (P3-R11 bound)", async () => {
+		const bridge = new RecordingBridge(
+			helloFrame("sess-e2e", [snap("a", { sessionFile: "/tmp/a.jsonl", updatedAt: 1_000 })]),
+		);
+		bridges.push(bridge);
+
+		// Controllable render spy: counts invocations and peak concurrency.
+		let calls = 0;
+		let inFlight = 0;
+		let maxInFlight = 0;
+		const gates: (() => void)[] = [];
+		const renderSpy = async (_file: string, _thinking: boolean): Promise<string> => {
+			calls += 1;
+			inFlight += 1;
+			maxInFlight = Math.max(maxInFlight, inFlight);
+			const n = calls;
+			const { promise, resolve } = Promise.withResolvers<void>();
+			gates.push(resolve);
+			await promise;
+			inFlight -= 1;
+			return `rendered-${n}`;
+		};
+		const { deps, paints, whenPainted } = runDeps(bridge.socketPath, {
+			renderTranscript: renderSpy,
+		});
+
+		// Stamp churn like a 150ms progress cadence: only updatedAt changes.
+		const upsert = (stamp: number): string =>
+			JSON.stringify({
+				v: 1,
+				type: "worker.upsert",
+				worker: snap("a", { sessionFile: "/tmp/a.jsonl", updatedAt: stamp }),
+			});
+
+		// Drive the session asynchronously: upsert during each in-flight render,
+		// then release the gate; last paint we quit on is rendered-3.
+		const drive = (async () => {
+			await whenPainted("transcript loading");
+			bridge.send(upsert(2_000));
+			await whenPainted("updated: 2000"); // applied during render-1 → pending
+			bridge.send(upsert(3_000));
+			await whenPainted("updated: 3000"); // coalesced with the pending refresh
+			gates[0]?.(); // settle render-1 → ONE trailing render-2 (stamp 3000)
+			await waitFor(() => gates.length >= 2); // render-2 invoked (REALTIME)
+			bridge.send(upsert(4_000));
+			await whenPainted("updated: 4000"); // pending during render-2
+			gates[1]?.(); // settle render-2 → trailing render-3 (stamp 4000)
+			await waitFor(() => gates.length >= 3);
+			gates[2]?.();
+			await whenPainted("rendered-3");
+		})();
+		deps.keys = (async function* () {
+			await drive;
+			// REALTIME: the fixed build paints "rendered-3" promptly off the
+			// trailing render; a broken single-flight build never does — the
+			// bounded fallback lets the assertions below run instead of hanging.
+			await Promise.race([whenPainted("rendered-3"), Bun.sleep(400)]);
+			yield "q";
+		})();
+		const code = await runViewer(deps);
+		await drive;
+		expect(code).toBe(0);
+
+		// Single-flight: at most one child render at a time despite the churn.
+		expect(maxInFlight).toBe(1);
+		expect(calls).toBe(3);
+
+		// No flicker: every paint after render-1 landed still shows text
+		// (never falls back to "(transcript loading…)" on stamp-only refresh).
+		const afterFirst = paints.slice(paints.findIndex((p) => p.includes("rendered-1")));
+		expect(afterFirst.length).toBeGreaterThan(1);
+		for (const p of afterFirst) {
+			expect(p).not.toContain("transcript loading");
+		}
+		expect(paints.join("")).toContain("rendered-3");
+	});
 });

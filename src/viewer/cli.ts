@@ -333,6 +333,35 @@ export async function runViewer(deps: RunViewerDeps): Promise<number> {
 		})();
 	};
 
+	const pump = (): void => {
+		if (renderInFlight) return;
+		const target = transcriptTarget();
+		if (target === null) return;
+		const thinking = ui.thinkingVisible;
+		const key = computeKey(target, thinking);
+		if (key === launchedKey) return;
+		launchRender(target, key, thinking);
+	};
+
+	const refreshTranscript = (force: boolean): void => {
+		const target = transcriptTarget();
+		const thinking = ui.thinkingVisible;
+		const identity = target === null ? undefined : `${target.id}@${target.file}:${thinking}`;
+		const key = target === null ? undefined : computeKey(target, thinking);
+		if (!force && key === slot.key) return;
+		slot.key = key;
+		slot.workerId = target?.id;
+		if (identity !== slot.identity) {
+			// real identity change (selection/file/thinking): drop whatever the
+			// previous target rendered; stamp-only churn keeps the text.
+			slot.identity = identity;
+			slot.text = undefined;
+			slot.error = undefined;
+		}
+		if (target === null) return;
+		pump();
+	};
+
 	client.subscribe((s) => {
 		ui = mergeUi(s, ui);
 		refreshTranscript(false);
