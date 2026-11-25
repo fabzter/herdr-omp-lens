@@ -256,6 +256,44 @@ describe("renderWorkerTranscript — resource bounds", () => {
 		expect(msg).toContain("e".repeat(100)); // bounded tail still attached
 		expect(killed).toBe(false); // stderr cap drains instead of killing the render
 	});
+
+	test("stderr past the cap keeps draining: a backpressured renderer still exits (no hang)", async () => {
+		const file = tmpPath("w");
+		writeJsonl(file, sessionRows());
+		// Models a real OS pipe: each 4KiB chunk is produced only when the
+		// consumer pulls (highWaterMark 0), and the process "exits" only after
+		// every byte has been consumed — a consumer that stops reading at the
+		// cap leaves the writer blocked forever.
+		const CHUNK = 4 * 1024;
+		const TOTAL = 192 * 1024; // 3× the 64KiB stderr cap
+		const exitGate = Promise.withResolvers<number>();
+		let delivered = 0;
+		const stderr = new ReadableStream<Uint8Array>(
+			{
+				pull(controller) {
+					if (delivered >= TOTAL) {
+						controller.close();
+						exitGate.resolve(1); // renderer finishes once stderr drained
+						return;
+					}
+					controller.enqueue(new Uint8Array(CHUNK).fill(0x65));
+					delivered += CHUNK;
+				},
+			},
+			{ highWaterMark: 0 },
+		);
+		const spawn = (): FakeProc => ({
+			stdout: streamOf(""),
+			stderr,
+			exited: exitGate.promise,
+			kill: () => {},
+		});
+		const err = await renderWorkerTranscript(file, { thinking: true, spawn }).catch(
+			(e: unknown) => e,
+		);
+		expect(err).toBeInstanceOf(Error); // resolves — did NOT hang on proc.exited
+		expect(delivered).toBe(TOTAL); // every stderr byte was drained to EOF
+	});
 });
 
 describe("tailSessionFile", () => {

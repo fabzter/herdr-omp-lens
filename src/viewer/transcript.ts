@@ -137,6 +137,12 @@ async function collectStream(
 			if (done) {
 				break;
 			}
+			if (capped) {
+				// Past the cap: keep reading but discard — a real pipe applies
+				// backpressure, so abandoning reads here would block the writer
+				// forever and hang `proc.exited` downstream.
+				continue;
+			}
 			if (total + value.byteLength > maxBytes) {
 				const keep = Math.max(0, maxBytes - total);
 				if (keep > 0) {
@@ -145,7 +151,7 @@ async function collectStream(
 				total += keep;
 				capped = true;
 				onCap();
-				break;
+				continue;
 			}
 			chunks.push(value);
 			total += value.byteLength;
