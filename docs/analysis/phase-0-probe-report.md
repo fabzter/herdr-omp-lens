@@ -1,7 +1,7 @@
 # Phase 0 probe report — the native subagent bus
 
 - Date: 2026-11-20 (probe run), design dated 2026-11-19.
-- Target: OMP **19.0.1** (installed). Herdr not involved in this probe.
+- Target: OMP **19.0.1** (installed at probe time — the spec pin later moved to 19.1.1 per owner OI-1 decision 2026-11-25; observed shapes unchanged). Herdr not involved in this probe.
 - Verdict: **R-01 RESOLVED — positively.** `pi.events` carries `task:subagent:*` with full-fidelity
   payloads. The live OMP-like view is feasible directly from the bus; the artifact-polling fallback is
   likely unnecessary for live fidelity (kept only as a fail-soft degradation).

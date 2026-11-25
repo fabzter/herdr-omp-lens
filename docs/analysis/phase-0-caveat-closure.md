@@ -2,7 +2,8 @@
 
 - Date: 2026-11-25 · Author: P6 task 5 (SDD v1-hardening)
 - Installed OMP: **v19.1.1** (self-reported; binary at `~/.local/bin/omp` dated 2026-11-23). The spec
-  pins 19.0.1 — the upgrade predates this task; observed shapes are unchanged from the 19.0.1 probe.
+  pinned 19.0.1 at the time — the upgrade predates this task; observed shapes are unchanged from the 19.0.1 probe.
+  (The spec pin later moved to 19.1.1 per owner OI-1 decision 2026-11-25, resolving the drift.)
   Drift is recorded here and flagged in the task report for the owner, per spec §Risks.
 - Sources: Phase 0 probe (`phase-0-probe-report.md`, caveats 1–5), controller live test (session
   `01a210e2-5995-74b7-99d0-1acf4182b855`), two fresh isolated probes run by this task
@@ -147,5 +148,5 @@ is the standing mitigation; no further action.
    or async/detached spawn flows outside this task's scope.
 3. `detached` semantics for **TUI async spawns** — field is `optional()` and unconsumed, so unverified
    variance is harmless but unverified.
-4. Version drift: evidence collected on **v19.1.1**, not the spec-pinned 19.0.1 — owner decision point,
-   per spec §Risks.
+4. Version drift — **RESOLVED 2026-11-25 (OI-1):** evidence was collected on **v19.1.1** vs the
+   then-spec-pinned 19.0.1; the owner approved re-pinning the spec to 19.1.1, so spec and gate now agree.

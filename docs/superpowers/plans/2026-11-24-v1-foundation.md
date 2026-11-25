@@ -6,7 +6,7 @@
 
 **Architecture:** Pure-TypeScript modules (`src/protocol`, `src/herdr`) with Zod boundary validation and an injectable Herdr transport so unit tests need no live Herdr. Only `src/extension` touches the OMP extension API (structural type in P1). No viewer rendering, roster, or topology orchestration here (P2–P4).
 
-**Tech Stack:** Bun 1.3.x, TypeScript (strict), Zod v4, Biome (lint). OMP 19.0.1 / Herdr 0.9.5 are the runtime targets.
+**Tech Stack:** Bun 1.3.x, TypeScript (strict), Zod v4, Biome (lint). OMP 19.1.1 / Herdr 0.9.5 are the runtime targets (re-pinned to 19.1.1 per owner OI-1 decision 2026-11-25; observed bus shapes unchanged from the 19.0.1 Phase-0 probe).
 
 **Spec:** `docs/plans/specs/phase-01-foundation-spec.md` (canonical interfaces), `docs/plans/specs/00-reconciliation.md` (RC-1..15), `docs/superpowers/specs/2026-11-19-herdr-omp-lens-design.md` (SDD §7–10).
 

@@ -67,7 +67,10 @@ Findings:
 
 ## Manual-evidence steps (exact rerun command)
 
-All of s1 tail / s2 / s3 / s4 / s5: `RUN_E2E_LIVE=1 bash scripts/run-e2e.sh`
+After Run D (2026-11-25 ~12:21 UTC, owner-witnessed): s1 (except the transient finished-collapse
+readback) and s2 are live-proven. Still manual: **s3** (`herdr pane get` JSON EOF flake),
+**s4** (local-build `-e` session-bind gap → viewer-reconnect timeout), **s5** (spawn-lands timeout,
+correlated with the s4 bind gap). Rerun: `RUN_E2E_LIVE=1 bash scripts/run-e2e.sh`
 inside a Herdr pane. s4 uses the LOCAL build automatically:
 `omp --no-extensions --config <scratch>/omp-e2e-overlay.yml -e <repo>/src/extension/index.ts`.
 
@@ -144,3 +147,85 @@ Findings:
 - s5's spawn-lands timeout correlates with the unbound restarted session —
   likely same root cause, not a separate flake. Honest manual, retry-once
   respected, run stopped per the bounded-live mandate.
+
+## Run D — owner-witnessed (OI-2) (`E2E_KEEP_WORKSPACE=1 RUN_E2E_LIVE=1`, 2026-11-25 ~12:21 UTC)
+
+Live run dispatched so the owner could watch s3 (/lens split) and s5 (cross-workspace focus) in the
+kept disposable workspace. Disposable workspace: **w17** (`lens-e2e-2026-11-25T12-21-15-895Z`),
+closed after the run via `herdr workspace close w17`. Scratch/evidence dir:
+`/var/folders/vm/tn_yl921169f6wxhx0h119th0000gn/T/lens-e2e-scratch-2026-11-25T12-21-15-895Z-1995/evidence/`.
+
+Result: **20 pass / 0 fail / 5 manual / 0 skipped** in ~917 s, exit 0.
+
+Verbatim summary:
+
+```
+================ lens E2E summary ================
+workspace : w17 (lens-e2e-2026-11-25T12-21-15-895Z)
+scratch   : /var/folders/vm/tn_yl921169f6wxhx0h119th0000gn/T/lens-e2e-scratch-2026-11-25T12-21-15-895Z-1995
+session 1 : 01a212a7-3b65-740c-9d1d-a54140bb9392  file /Users/fabzter/.omp/agent/sessions/-tmp-lens-e2e-scratch-2026-11-25T12-21-15-895Z-1995/2026-11-25T12-21-19-333Z_01a212a7-3b65-740c-9d1d-a54140bb9392.jsonl
+session 2 : (restart skipped)  file -
+workers   : alpha-responder, bravo-responder
+build     : installed plugin for s1–s3; local -e /Users/fabzter/src/omp-fabz-improvements/src/extension/index.ts for s4+
+checks    : 20 pass, 0 fail, 5 manual, 0 skipped, 17 notes
+  [pass] setup HERDR_ENV=1 — caller pane wN:p1
+  [pass] setup daily workspace enumerated (before) — 13 workspaces, 19 tabs, 21 panes
+  [note] mode live mode — RUN_E2E_LIVE=1 — full lifecycle drive
+  [note] s0 live mode — create/teardown exercised by s1 + teardown instead
+  [pass] s1 disposable workspace created — w17 (lens-e2e-2026-11-25T12-21-15-895Z)
+  [pass] s1 shell pane split — w17:p2 cwd=/private/var/folders/vm/tn_yl921169f6wxhx0h119th0000gn/T/lens-e2e-scratch-2026-11-25T12-21-15-895Z-1995
+  [pass] s1 omp launched (installed build) — agent=lense2e5895z session=01a212a7-3b65-740c-9d1d-a54140bb9392 file=…/2026-11-25T12-21-19-333Z_01a212a7-….jsonl
+  [pass] s1 auto-open on first spawn — tab w17:t2 pane w17:p3
+  [pass] s1 no focus theft — focus stayed on wN:t1 (wN)
+  [pass] s1 U-HDR-1 viewer never agent — 1 viewer pane(s) report agent=null/undefined
+  [pass] s1 viewer connected, live worker listed — [connected] + workers (>=1)
+  [manual] s1 finished-collapse — collapse window missed — workers(0) proves the worker reaped, but 'finished (N) — press e to expand' was NOT witnessed live (unit-covered)
+  [note] s1 worker ids — alpha-responder
+  [note] s1 worker session_exit marker — no marker yet — restart history may map the worker as aborted; continuing
+  [pass] s2 manual close honored — tab w17:t2 closed
+  [pass] s2 worker survives viewer close (FR-14) — agent lense2e5895z still live
+  [pass] s2 exactly one overview tab reopened (FR-05) — tab w17:t3
+  [pass] s2 no focus theft — focus stayed on wN:t1 (wN)
+  [pass] s2 U-HDR-1 viewer never agent — 1 viewer pane(s) report agent=null/undefined
+  [note] s2 second worker terminal state — workers (0) — finished worker reaped (transient collapse missed)
+  [note] s2 worker ids — alpha-responder, bravo-responder
+  [note] s3 /lens registered — palette shows '/lens open the herdr-omp-lens overview…'
+  [manual] s3 read-only /lens split — env-coupled — SyntaxError: JSON Parse error: Unexpected EOF | rerun: RUN_E2E_LIVE=1 bash scripts/run-e2e.sh
+  [note] s4 omp exit — /exit did not clear the agent; esc + retry, then key fallbacks
+  [pass] s4 omp exited — session 01a212a7-… closed
+  [manual] s4 session bind after restart — agent_session never bound after agent_started + bounded agent-list poll (env-coupled)
+  [pass] s4 omp restarted (local build, same cwd) — agent=lense2e5895zb session=undefined
+  [pass] s4 surviving tab reused (D2 rebind) — same tab w17:t3 rebound
+  [pass] s4 U-HDR-1 viewer never agent — 1 viewer pane(s) report agent=null/undefined
+  [note] retry viewer reconnected to new socket — first attempt failed (timeout 30000ms); retrying once
+  [manual] s4 OMP restart → history auto-open — env-coupled — timeout waiting for viewer reconnected to new socket after 30000ms | rerun: RUN_E2E_LIVE=1 bash scripts/run-e2e.sh
+  [note] s5 cross-workspace precondition — focused=wN (wN:t1); e2e=w17
+  [note] retry cross-workspace spawn lands — first attempt failed (timeout 150000ms); retrying once
+  [manual] s5 cross-workspace focus preservation — env-coupled — timeout waiting for cross-workspace spawn lands after 150000ms | rerun: RUN_E2E_LIVE=1 bash scripts/run-e2e.sh
+  [note] teardown workspace kept — w17 (lens-e2e-2026-11-25T12-21-15-895Z) — E2E_KEEP_WORKSPACE=1
+  [pass] s6 daily workspace untouched — 13 workspaces, 19 tabs, 21 panes — identical before/after (e2e ids excluded)
+  [pass] s6 no lens-e2e-* workspace left behind — disposable scope clean
+=================================================
+```
+
+Live-proven vs manual (honest):
+
+- **s1 — LIVE-PROVEN:** disposable workspace create, shell split, installed-build launch,
+  auto-open on first spawn, no focus theft, U-HDR-1, viewer `[connected]` + live worker roster.
+  (`finished-collapse` stays manual — transient, unit-covered, reaping outpaced readback again.)
+- **s2 — LIVE-PROVEN (new vs Run C):** manual close honored → worker survives (FR-14) → exactly-one
+  reopen (FR-05, tab w17:t3) → no focus theft → U-HDR-1. This was an owner-witness target and it
+  ran green live.
+- **s3 — STILL MANUAL (env-coupled):** the known `herdr pane get` JSON Parse error (Unexpected EOF)
+  recurred; retry-once did not clear it this run. `/lens` registration was live-confirmed via the
+  command palette, but the split itself was not witnessed. Same flake as Run C.
+- **s4 — STILL MANUAL (env-coupled):** omp exited and restarted on the local build and the surviving
+  tab was reused (D2 rebind PASS), but `agent_session` never bound after `agent_started` + bounded
+  agent-list poll — the same local-build(-e) bind gap as Run C — so the viewer-reconnect
+  (`workers(0)` → not-live history) timed out at 30 s ×2.
+- **s5 — STILL MANUAL (env-coupled):** cross-workspace precondition was correctly met (focused wN,
+  e2e w17), but the spawn-lands wait timed out at 150 s ×2 — correlating again with the s4 bind gap
+  (restarted session `agent_session=undefined`), likely same root cause, not a separate flake.
+- **s6 — PASS:** daily workspace identical before/after; no `lens-e2e-*` left behind.
+  w17 was then closed manually and `herdr workspace list` re-verified: 13 daily workspaces
+  (wM, wN, wP, wB, w1, w2, wD, wC, w9, w7, w8, wG, wJ), zero `lens-e2e-*` remaining.

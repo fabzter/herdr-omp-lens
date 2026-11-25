@@ -32,7 +32,8 @@ In scope:
 - **Fail-soft verification:** bridge/Herdr death, malformed frames, shape drift → OMP unaffected;
   degraded-mode artifact-dir discovery (D1), adapter timeouts + circuit-break (F-15).
 - **NFR evidence:** socket 0600, no network bind, ≤150 ms coalescing, bounded buffers.
-- **Clean-profile install** (`omp plugin link`) on the pinned versions (OMP 19.0.1 / Herdr 0.9.5).
+- **Clean-profile install** (`omp plugin link`) on the pinned versions (OMP 19.1.1 / Herdr 0.9.5 —
+  re-pinned from 19.0.1 per owner OI-1 decision 2026-11-25).
 - **Docs reconcile** + **DoD-v1 evidence report** + owner sign-off walkthrough.
 
 Out of scope: any new feature or behavior change beyond a bug fix required to make a green gate go
@@ -85,7 +86,7 @@ upstream submission.
   path was a `--no-session` artifact); `omp render <sessionFile>` exits 0 host-less;
   `omp read history://<id>` needs the owning live session and is used only in-session (RC-15).
   *Accept:* evidence report records each transition observed with its raw bus frame and quotes the
-  host-less render results; any transition that cannot be triggered on 19.0.1 is recorded as a
+  host-less render results; any transition that cannot be triggered on the pinned OMP build is recorded as a
   known limitation, not silently skipped.
 - **P6-R6 Isolated named-session E2E (SDD §11, F-14/D2/D3).** One scripted E2E in a named,
   disposable Herdr session covers: auto-open on first spawn; manual close → next-subtask reopen
@@ -119,7 +120,7 @@ upstream submission.
   frame-volume run (≥50k frames through encode/decode/roster/viewer) asserts flat heap and bounded
   line counts — no ≥10-minute soak — with numbers quoted in the evidence report.
 - **P6-R9 Version discipline & clean-profile install (NFR-02, FR-15, F-16).** On pinned OMP
-  19.0.1 / Herdr 0.9.5: `omp plugin link` (or `install`) into a clean profile loads the extension,
+  19.1.1 / Herdr 0.9.5 (re-pinned per OI-1): `omp plugin link` (or `install`) into a clean profile loads the extension,
   and first delegation opens the view **from an arbitrary working directory** —
   `resolveViewerCommand()` resolves against the installed package root, never the session cwd.
   Feature-detection degrades — never crashes — when a bus channel or Herdr command is absent.
@@ -171,7 +172,7 @@ export async function sabotage(testId: string): Promise<boolean>;   // true iff 
 
 - **E2E flakiness / environment coupling:** mitigate via the isolated named session, deterministic
   task fixtures (cheap scout tasks), retry-once policy, and recorded manual-evidence fallback.
-- **Untriggerable transitions:** `parked`/`aborted` may not be reproducible on 19.0.1 — recorded as
+- **Untriggerable transitions:** `parked`/`aborted` may not be reproducible on the pinned OMP build — recorded as
   known limitation, never faked (P6-R5).
 - **Guard evasion:** forbidden calls built dynamically could escape regex scans — mitigated by the
   `src/herdr` runtime transport denylist + review note in P6-R3 and socket-level capture in E2E.

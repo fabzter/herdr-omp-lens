@@ -200,11 +200,10 @@ const REQS: Requirement[] = [
 		],
 		manual: [
 			{
-				capture: "docs/analysis/e2e-evidence.md §Manual-evidence steps",
-				what: "E2E step s2 (close → next spawn → exactly one tab) — scripted, not yet live-witnessed",
+				capture: "docs/analysis/e2e-evidence.md §Run D",
+				what: "E2E step s2 (close → next spawn → exactly one tab w17:t3, FR-14 worker survives) — LIVE-WITNESSED in Run D 2026-11-25 (owner-witnessed, w17)",
 			},
 		],
-		witnessPending: "E2E s2 close→reopen — owner live-witness outstanding",
 	},
 	{
 		id: "FR-06",
@@ -238,10 +237,10 @@ const REQS: Requirement[] = [
 		manual: [
 			{
 				capture: "docs/analysis/e2e-evidence.md §Manual-evidence steps",
-				what: "E2E step s3 (/lens split live) — scripted, not yet live-witnessed",
+				what: "E2E step s3 (/lens split live) — STILL manual after owner-witnessed Run D 2026-11-25: `herdr pane get` JSON Parse error (Unexpected EOF), env-coupled flake, retry-once did not clear; /lens registration live-confirmed via command palette",
 			},
 		],
-		witnessPending: "E2E s3 /lens split — owner live-witness outstanding",
+		witnessPending: "E2E s3 /lens split — env-coupled pane-get JSON EOF flake in Runs C and D",
 	},
 	{
 		id: "FR-07",
@@ -293,7 +292,7 @@ const REQS: Requirement[] = [
 		manual: [
 			{
 				capture: "docs/analysis/e2e-evidence.md Fix-round F3",
-				what: "collapse is transient — recorded `manual \"finished-collapse\"` (unit-covered, NOT witnessed live)",
+				what: "collapse is transient — recorded `manual \"finished-collapse\"` again in owner-witnessed Run D (unit-covered, NOT witnessed live)",
 			},
 		],
 	},
@@ -329,10 +328,10 @@ const REQS: Requirement[] = [
 		manual: [
 			{
 				capture: "docs/analysis/e2e-evidence.md §Manual-evidence steps",
-				what: "E2E step s4 (OMP restart → auto-open + not-live history) — scripted, not yet live-witnessed",
+				what: "E2E step s4 (OMP restart → auto-open + not-live history) — STILL manual after owner-witnessed Run D 2026-11-25: local-build (-e) session-bind gap (agent_session never bound) → viewer-reconnect timeout 30s×2; tab reuse/rebind DID pass live",
 			},
 		],
-		witnessPending: "E2E s4 restart→history — owner live-witness outstanding",
+		witnessPending: "E2E s4 restart→history — env-coupled local-build session-bind gap in Runs C and D",
 	},
 	{
 		id: "FR-10",
@@ -456,10 +455,10 @@ const REQS: Requirement[] = [
 			},
 			{
 				capture: "docs/analysis/e2e-evidence.md §Manual-evidence steps",
-				what: "E2E step s5 (cross-workspace spawn focus) — scripted, not yet live-witnessed",
+				what: "E2E step s5 (cross-workspace spawn focus) — STILL manual after owner-witnessed Run D 2026-11-25: spawn-lands timeout 150s×2, correlated with the s4 local-build session-bind gap (agent_session=undefined)",
 			},
 		],
-		witnessPending: "E2E s5 cross-workspace focus — owner live-witness outstanding",
+		witnessPending: "E2E s5 cross-workspace focus — env-coupled spawn timeout in Runs C and D (likely same bind-gap root cause)",
 	},
 	{
 		id: "FR-14",
@@ -550,7 +549,7 @@ const REQS: Requirement[] = [
 	},
 	{
 		id: "NFR-02",
-		title: "Version discipline — pin OMP 19.0.1 / Herdr 0.9.5, fail soft on drift",
+		title: "Version discipline — pin OMP 19.1.1 / Herdr 0.9.5, fail soft on drift",
 		tests: [
 			{
 				file: "tests/extension/observe-wiring.test.ts",
@@ -572,10 +571,9 @@ const REQS: Requirement[] = [
 		manual: [
 			{
 				capture: "docs/analysis/clean-profile-install.md §1",
-				what: "installed `omp/19.1.1` (self-reported) + `herdr 0.9.5` vs spec pin `19.0.1` — drift recorded, owner decision open",
+				what: "installed `omp/19.1.1` (self-reported) + `herdr 0.9.5` == re-pinned spec — OI-1 resolved 2026-11-25 (owner approved re-pin from 19.0.1)",
 			},
 		],
-		witnessPending: "version-drift decision (OI-1) — owner chooses re-pin 19.0.1 vs accept 19.1.1",
 	},
 	{
 		id: "NFR-03",
@@ -735,14 +733,14 @@ const DOC_CHECKS: DocCheck[] = [
 	{
 		id: "DC-6",
 		file: "README.md",
-		pattern: /19\.0\.1/,
-		why: "spec pin recorded",
+		pattern: /OMP 19\.1\.1/,
+		why: "spec pin recorded (re-pinned to 19.1.1 per OI-1)",
 	},
 	{
 		id: "DC-7",
 		file: "README.md",
-		pattern: /19\.1\.1/,
-		why: "installed drift recorded",
+		pattern: /19\.0\.1/,
+		why: "re-pin provenance from the earlier 19.0.1 pin recorded",
 	},
 	{
 		id: "DC-8",
@@ -862,11 +860,11 @@ const LIMITATIONS: { what: string; source: string }[] = [
 		source: "docs/plans/00-master-plan.md §2 v2 horizon",
 	},
 	{
-		what: "version drift: evidence collected on OMP 19.1.1 / Herdr 0.9.5 vs spec pin 19.0.1 — open owner decision",
+		what: "spec re-pinned 19.0.1 → 19.1.1 (OI-1 resolved 2026-11-25): evidence was collected on OMP 19.1.1 / Herdr 0.9.5, which now equals the pin; observed bus shapes unchanged from the 19.0.1 Phase-0 probe",
 		source: "docs/analysis/clean-profile-install.md §1",
 	},
 	{
-		what: "E2E live steps s2–s5 (close→reopen, /lens split, restart→history, cross-workspace focus) are scripted but not yet owner-witnessed",
+		what: "E2E live steps s3–s5 (/lens split, restart→history, cross-workspace focus) remain manual after owner-witnessed Run D 2026-11-25 — env-coupled: s3 pane-get JSON EOF flake; s4 local-build session-bind gap → viewer-reconnect timeout; s5 spawn-lands timeout (correlated). s1/s2 live-proven in Run D (w17)",
 		source: "docs/analysis/e2e-evidence.md §Manual-evidence steps",
 	},
 ];
@@ -875,13 +873,13 @@ const OPEN_ITEMS: { id: string; item: string; ownerAction: string; source: strin
 	{
 		id: "OI-1",
 		item: "Version drift — installed OMP 19.1.1 vs spec pin 19.0.1",
-		ownerAction: "decide: re-pin the spec to 19.1.1, or re-verify on 19.0.1",
+		ownerAction: "RESOLVED 2026-11-25 — owner approved re-pin to 19.1.1; forward-looking pins moved, evidence stays valid (produced on the now-pinned version)",
 		source: "docs/analysis/clean-profile-install.md §1; .superpowers/sdd/2026-11-24-v1-hardening/progress.md (P6-5 OPEN OWNER DECISION)",
 	},
 	{
 		id: "OI-2",
 		item: "E2E live lifecycle steps s2–s5 (close→reopen, /lens split, restart→history, cross-workspace focus)",
-		ownerAction: "spot-witness `RUN_E2E_LIVE=1 bash scripts/run-e2e.sh` inside a Herdr pane; at minimum s5 focus",
+		ownerAction: "PARTIALLY RESOLVED 2026-11-25 — owner-witnessed Run D live-proved s1/s2 (FR-05 cleared); s3 (pane-get JSON EOF), s4 (local-build bind gap), s5 (spawn timeout, correlated) remain env-coupled manual — rerun `RUN_E2E_LIVE=1 bash scripts/run-e2e.sh` or convert to recorded limitations at sign-off",
 		source: "docs/analysis/e2e-evidence.md §Manual-evidence steps; progress.md (P6-6 CONDITION)",
 	},
 	{
@@ -1013,7 +1011,7 @@ function main(): number {
 	const date = new Date().toISOString().slice(0, 10);
 
 	// --- live provenance probes (never hardcode what can be re-verified) ------
-	const EXPECTED_OMP = "19.1.1"; // recorded installed version (spec pin 19.0.1 — drift, OI-1)
+	const EXPECTED_OMP = "19.1.1"; // spec pin AND installed version (OI-1 resolved 2026-11-25: re-pinned from 19.0.1)
 	const EXPECTED_HERDR = "0.9.5";
 	const ompV = probeVersion("omp");
 	const herdrV = probeVersion("herdr");
@@ -1115,7 +1113,7 @@ function main(): number {
 	lines.push(`> Owner sign-off (P6-R11): **UNSIGNED — the owner signs, the agent only prepares.** See §Sign-off.`);
 	lines.push(``);
 	lines.push(`- Generated: ${date} · commit \`${head}\` · Bun ${Bun.version}`);
-	lines.push(`- Environment: OMP **${ompV.version ?? "(probe failed)"}** (installed; spec pin **19.0.1** — open owner decision OI-1) · Herdr **${herdrV.version ?? "(probe failed)"}** (probed live: \`omp --version\` / \`herdr --version\`)`);
+	lines.push(`- Environment: OMP **${ompV.version ?? "(probe failed)"}** (installed == spec pin **19.1.1** — OI-1 resolved 2026-11-25, re-pinned from 19.0.1) · Herdr **${herdrV.version ?? "(probe failed)"}** (probed live: \`omp --version\` / \`herdr --version\`)`);
 	lines.push(`- Test gate: \`bun test\` → **${junit.tests} pass / ${junit.failures} fail** (${junit.suites} suites, ${junit.assertions} assertions)`);
 	lines.push(`- Static gates: \`bun run typecheck\` ${tsc.ok ? "clean" : "**FAILED**"} · \`bun run lint\` ${lint.ok ? `clean (${lint.out.split("\n").pop()})` : "**FAILED**"}`);
 	lines.push(`- Suite summary: \`${junit.stdoutTail.split("\n").slice(-1)[0]}\``);
