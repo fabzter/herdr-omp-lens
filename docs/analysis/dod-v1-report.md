@@ -3,11 +3,11 @@
 > GENERATED FILE — do not edit. Regenerate with `bun scripts/gen-dod-report.ts`.
 > Owner sign-off (P6-R11): **UNSIGNED — the owner signs, the agent only prepares.** See §Sign-off.
 
-- Generated: 2026-11-25 · commit `c21b3cf` · Bun 1.3.14
+- Generated: 2026-11-25 · commit `1d4511b` · Bun 1.3.14
 - Environment: OMP **19.2.1** (installed == spec pin **19.2.1** — OI-1 + OI-4 resolved 2026-11-25: 19.0.1 → 19.1.1 → 19.2.1) · Herdr **0.9.5** (probed live: `omp --version` / `herdr --version`)
 - Test gate: `bun test` → **469 pass / 0 fail** (160 suites, 1706 assertions)
 - Static gates: `bun run typecheck` clean · `bun run lint` clean (Checked 68 files in 51ms. No fixes applied.)
-- Suite summary: `Ran 469 tests across 36 files. [3.72s]`
+- Suite summary: `Ran 469 tests across 36 files. [3.80s]`
 
 ## Requirement matrix
 
@@ -318,7 +318,7 @@ Clean restore: `git diff -- src/` empty; clean re-run `7 pass, 0 fail, 83 expect
 | -- | ---- | ------------ | ------ |
 | OI-1 | Version drift — installed OMP 19.1.1 vs spec pin 19.0.1 | RESOLVED 2026-11-25 — owner approved re-pin to 19.1.1; forward-looking pins moved, evidence stays valid (produced on the now-pinned version) | docs/analysis/clean-profile-install.md §1; .superpowers/sdd/2026-11-24-v1-hardening/progress.md (P6-5 OPEN OWNER DECISION) |
 | OI-4 | Version drift — installed OMP upgraded 19.1.1 → 19.2.1 (2026-11-25) vs spec pin 19.1.1 | RESOLVED 2026-11-25 — owner approved re-pin to 19.2.1 (matches the pi-tui/pi-wire pin = the TUI library the installed OMP embeds); forward-looking pins moved, earlier evidence stays version-stamped on 19.1.1 | docs/analysis/clean-profile-install.md §1 (OI-4 addendum) |
-| OI-2 | E2E live lifecycle steps s2–s5 (close→reopen, /lens split, restart→history, cross-workspace focus) | PARTIALLY RESOLVED 2026-11-25 — owner-witnessed Runs D/E/E2 live-proved s1/s2/s5 (FR-05 + FR-13 cleared); s3 (/lens split: send-text EOF fixed → input-clear + null-title bugs found and fixed, live witness still pending), s4 (local-build bind gap) remain env-coupled manual — rerun `RUN_E2E_LIVE=1 bash scripts/run-e2e.sh` or convert to recorded limitations at sign-off | docs/analysis/e2e-evidence.md §Manual-evidence steps; progress.md (P6-6 CONDITION) |
+| OI-2 | E2E live lifecycle steps s2–s5 (close→reopen, /lens split, restart→history, cross-workspace focus) | PARTIALLY RESOLVED 2026-11-25 — owner-witnessed Runs D/E/E2 + Part A live-proved s1/s2/s3/s5 (FR-05 + FR-06 + FR-13 cleared); Run G (v1.1 installed build) re-proved s1/s2 + all TUI token assertions, its s3/s5/s4 blocked by an env-coupled SIGHUP agent death mid-run (evidence §Run G); s4 local-build bind gap remains (FR-09, post-v1 ticket) — rerun `RUN_E2E_LIVE=1 bash scripts/run-e2e.sh` with the Herdr session idle, or convert to recorded limitations at sign-off | docs/analysis/e2e-evidence.md §Manual-evidence steps; progress.md (P6-6 CONDITION) |
 | OI-3 | Deferred review minors (non-blocking follow-ups from P6 reviews) | triage at final review; each already has a sibling assertion or bounded failure mode | progress.md deferred-minor lines: invariants (f) h.errors check; scan-herdr-calls errorCtx exemption; e2e unbounded `herdr --version` preflight + stale pre-restart ids; clean-profile scratch teardown; P5 roll-up minors |
 
 ## Sign-off (owner only)

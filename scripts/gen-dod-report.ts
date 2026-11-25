@@ -884,7 +884,7 @@ const OPEN_ITEMS: { id: string; item: string; ownerAction: string; source: strin
 	{
 		id: "OI-2",
 		item: "E2E live lifecycle steps s2–s5 (close→reopen, /lens split, restart→history, cross-workspace focus)",
-		ownerAction: "PARTIALLY RESOLVED 2026-11-25 — owner-witnessed Runs D/E/E2 live-proved s1/s2/s5 (FR-05 + FR-13 cleared); s3 (/lens split: send-text EOF fixed → input-clear + null-title bugs found and fixed, live witness still pending), s4 (local-build bind gap) remain env-coupled manual — rerun `RUN_E2E_LIVE=1 bash scripts/run-e2e.sh` or convert to recorded limitations at sign-off",
+		ownerAction: "PARTIALLY RESOLVED 2026-11-25 — owner-witnessed Runs D/E/E2 + Part A live-proved s1/s2/s3/s5 (FR-05 + FR-06 + FR-13 cleared); Run G (v1.1 installed build) re-proved s1/s2 + all TUI token assertions, its s3/s5/s4 blocked by an env-coupled SIGHUP agent death mid-run (evidence §Run G); s4 local-build bind gap remains (FR-09, post-v1 ticket) — rerun `RUN_E2E_LIVE=1 bash scripts/run-e2e.sh` with the Herdr session idle, or convert to recorded limitations at sign-off",
 		source: "docs/analysis/e2e-evidence.md §Manual-evidence steps; progress.md (P6-6 CONDITION)",
 	},
 	{
