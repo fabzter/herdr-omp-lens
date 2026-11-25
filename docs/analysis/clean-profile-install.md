@@ -2,27 +2,28 @@
 
 Date: 2026-11-25. Evidence for the P6-R9 acceptance:
 
-> On pinned OMP 19.0.1 / Herdr 0.9.5: `omp plugin link` (or `install`) into a
+> On pinned OMP 19.1.1 / Herdr 0.9.5 (re-pinned per OI-1): `omp plugin link` (or `install`) into a
 > clean profile loads the extension, and first delegation opens the view from
 > an arbitrary working directory — `resolveViewerCommand()` resolves against
 > the installed package root, never the session cwd. Feature-detection
 > degrades — never crashes — when a bus channel or Herdr command is absent.
 
-## 1. Versions — drift recorded, owner decision open
+## 1. Versions — drift resolved (re-pinned, OI-1)
 
 | Component | Spec pin | Installed | Status |
 |---|---|---|---|
-| OMP | 19.0.1 | `omp/19.1.1` | **drift — open owner decision** |
+| OMP | 19.1.1 | `omp/19.1.1` | **exact — resolved (re-pinned, OI-1 2026-11-25)** |
 | Herdr | 0.9.5 | `herdr 0.9.5` | exact |
 | herdr-omp-lens | — | `0.1.0` | n/a |
 
-Per the spec's "Version drift between spec and gate" risk rule, the drift is
-recorded as an **open owner decision** (re-pin the spec vs accept 19.1.1), not
-a silent re-pin. No package pins were changed. All evidence below was produced
-on the installed versions (OMP 19.1.1 / Herdr 0.9.5). Nothing observed in this
-task suggests a 19.1.1 regression; the run is evidence on the drifted version,
-not proof of the pinned one — the owner decides whether the pin moves or a
-19.0.1 re-verify is required.
+The drift (installed 19.1.1 vs spec-pinned 19.0.1) was recorded as an open
+owner decision per the spec's "Version drift between spec and gate" risk rule
+— not a silent re-pin. On **2026-11-25 the owner chose to re-pin the spec to
+OMP 19.1.1 (OI-1 resolved)**: all forward-looking pins moved, and every
+evidence run in this file stays valid — it was produced on the installed
+versions (OMP 19.1.1 / Herdr 0.9.5), which now equal the spec pin. No 19.0.1
+re-verify is required; the observed bus shapes are unchanged from the 19.0.1
+Phase-0 probe.
 
 ## 2. Clean-profile install
 

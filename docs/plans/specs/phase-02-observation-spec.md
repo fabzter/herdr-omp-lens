@@ -177,7 +177,7 @@ by P5: `snapshot()` + `WorkerSnapshot.sessionFile` refs, and the `startBridge` `
 - **TUI/print divergence** (probe caveat 3, `detached:true`): P2-R2 acceptance before P3/P4 rely on
   the stream.
 - **`pi.events` is undocumented upstream**: feature-detect + fail-soft per P2-R8 fallback; version-pin
-  OMP 19.0.1.
+  OMP 19.1.1 (re-pinned from 19.0.1 per owner OI-1 decision 2026-11-25).
 - **Degraded discovery root (D1/F-04)**: fallback scans the verified persisted-session root
   `~/.omp/agent/sessions/<encoded-cwd>/<ts>_<session-id>/`; live roster promises (FR-02/04/10) are
   relaxed — no live counters/activity/stream without the bus. Host-less rendering uses

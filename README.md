@@ -104,24 +104,23 @@ the full design.
 
 ## Requirements
 
-- **OMP 19.1.1** (installed and measured) — the design is pinned to **19.0.1**; the drift is an
-  **open owner decision** recorded in
-  [`docs/analysis/clean-profile-install.md`](docs/analysis/clean-profile-install.md) §1. No
-  regression was observed on 19.1.1, but the gate is evidence on the drifted version.
+- **OMP 19.1.1** — the design pin (re-pinned from 19.0.1 per owner decision OI-1, 2026-11-25) and the
+  version every evidence run was produced on; spec and gate now agree. See
+  [`docs/analysis/clean-profile-install.md`](docs/analysis/clean-profile-install.md) §1.
 - **Herdr 0.9.5** (the version probed against).
 - macOS or Linux, [Bun](https://bun.sh) on `PATH` (the viewer runs under `bun`), and a Herdr-managed
   pane (`HERDR_ENV=1`).
 
 ## Verified commands
 
-Every command below was executed on 2026-11-25 at commit `7e8e131` (OMP 19.1.1 / Herdr 0.9.5) and
+Every command below was executed on 2026-11-25 at commit `515d91dc` (OMP 19.1.1 / Herdr 0.9.5) and
 its output is quoted verbatim. Regenerate the evidence report with `bun scripts/gen-dod-report.ts`.
 
 ```console
 $ bun test
  460 pass
  0 fail
- 1659 expect() calls
+ 1658 expect() calls
 Ran 460 tests across 35 files. [3.93s]
 
 $ bun run typecheck          # tsc --noEmit — clean, no output
@@ -148,7 +147,7 @@ _Above JSON is abridged for readability — the verbatim, unabridged output is r
 [docs/analysis/clean-profile-install.md](docs/analysis/clean-profile-install.md) §2._
 
 $ bash scripts/run-e2e.sh    # recorded run, verbatim summary — docs/analysis/e2e-evidence.md Run A
-exit code: 0   (7 pass / 0 fail / 0 manual / 5 skipped)
+exit code: 0   (7 pass / 0 fail / 0 manual / 5 skipped)  # live runs: Run C + owner-witnessed Run D, same doc
 ```
 
 The slash commands cannot be typed from a shell (they run inside the OMP TUI). Their dispatch and
@@ -158,7 +157,8 @@ witnessed in an interactive TUI session:
 (see [`docs/analysis/phase-0-caveat-closure.md`](docs/analysis/phase-0-caveat-closure.md) §Caveat 1)
 and in the clean-profile run (`OMP subagents` tab `w11:t2`, viewer `w11:p2`, focus held in `wN` —
 [`docs/analysis/clean-profile-install.md`](docs/analysis/clean-profile-install.md) §3). The live E2E
-step that drives `/lens split` (s3) is still pending owner witness — see
+step that drives `/lens split` (s3) is still pending a clean live witness — Run D (owner-witnessed)
+recorded the pane-get JSON EOF flake on it; s1/s2 are now live-proven — see
 [`docs/analysis/dod-v1-report.md`](docs/analysis/dod-v1-report.md) §Open items.
 
 ## Limitations
@@ -183,11 +183,14 @@ capture; none is a silent pass.
 6. **Herdr-restart restore is out of scope for v1.** A surviving *OMP* viewer tab is reused and
    rebound to the new bridge socket on restart; restoring the viewer layout after a *Herdr* server
    restart is a v2 horizon item.
-7. **Version drift.** Evidence was collected on OMP **19.1.1 / Herdr 0.9.5** while the design pins
-   OMP **19.0.1**. Re-pin vs. re-verify is an open owner decision (open item OI-1).
-8. **Owner live-witness pending.** E2E steps s2–s5 (close→reopen, `/lens split`, restart→history,
-   cross-workspace focus) are scripted and routed, but the owner has not yet spot-witnessed them
-   live; the DoD report records them as `manual-evidence`, not `pass`.
+7. ~~Version drift~~ **Resolved (OI-1, 2026-11-25).** Evidence was collected on OMP **19.1.1 /
+   Herdr 0.9.5**; the owner approved re-pinning the spec from 19.0.1 to 19.1.1, so spec and gate agree.
+8. **Owner live-witness — partially resolved (OI-2, 2026-11-25).** Owner-witnessed Run D live-proved
+   s1 and s2 (auto-open, close→reopen, no focus theft, U-HDR-1); s3 (`/lens split`), s4
+   (restart→history) and s5 (cross-workspace focus) remain `manual-evidence` for env-coupled
+   reasons (pane-get JSON EOF flake; local-build session-bind gap; correlated spawn timeout) —
+   recorded in [`docs/analysis/e2e-evidence.md`](docs/analysis/e2e-evidence.md) §Run D, never as
+   silent passes.
 9. **Deferred review minors.** Small, non-blocking follow-ups recorded across the hardening reviews
    (list in the DoD report §Open items, OI-3) remain for triage; each has a sibling assertion or a
    bounded failure mode.

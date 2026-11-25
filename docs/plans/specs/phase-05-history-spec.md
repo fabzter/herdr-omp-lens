@@ -26,7 +26,8 @@ In scope:
 
 - `src/extension/history/` — artifact-tree scan of the current session's project session directory
   (`~/.omp/agent/sessions/<encoded-cwd>/<ts>_<session-id>/<worker-id>.jsonl`, V-OMP-8 layout verified
-  2026-11-24 for OMP 19.0.1), mapping discovered subagent transcripts to `WorkerSnapshot` entries
+  2026-11-24 for OMP 19.1.1 — re-pinned from 19.0.1 per owner OI-1 decision 2026-11-25; observed bus
+  shapes unchanged), mapping discovered subagent transcripts to `WorkerSnapshot` entries
   flagged `historical`, plus merge/dedupe against the live roster.
 - Historical transcript access: emit `transcript.ref` (`{v:1, type:"transcript.ref", id, sessionFile,
   artifactDir?}`, RC-5) so the viewer can render via `omp render <sessionFile>` (verified host-less)
