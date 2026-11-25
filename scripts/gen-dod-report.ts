@@ -951,6 +951,17 @@ function gate(cmd: string[]): { ok: boolean; out: string } {
 	return { ok: p.exitCode === 0, out: (new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr)).trim() };
 }
 
+/** Probe a CLI `--version` and return the first `MAJOR.MINOR.PATCH` found, else null. */
+function probeVersion(cmd: string): { ok: boolean; version: string | null; raw: string } {
+	try {
+		const raw = execFileSync(cmd, ["--version"], { cwd: REPO }).toString().trim();
+		const m = /(\d+\.\d+\.\d+)/.exec(raw);
+		return { ok: m !== null, version: m?.[1] ?? null, raw };
+	} catch {
+		return { ok: false, version: null, raw: "(probe failed)" };
+	}
+}
+
 function fileContains(file: string, needle: string): boolean {
 	try {
 		return readFileSync(join(REPO, file), "utf8").includes(needle);
@@ -982,12 +993,46 @@ function sabotageRows(): { letter: string; title: string; red: string }[] {
 		});
 }
 
+/** Parse the restore-verification summary from sabotage.md (never hardcode the numbers). */
+function sabotageRestore(): { clean: string; rerun: string } | null {
+	try {
+		const tail = readFileSync(join(REPO, "tests/guards/sabotage.md"), "utf8").split("## Restore verification")[1] ?? "";
+		const clean = /git diff -- src\/?`? is empty/i.test(tail) ? "`git diff -- src/` empty" : "";
+		const rerun = /(\d+ pass, 0 fail, \d+ expect\(\) calls)/.exec(tail)?.[1] ?? "";
+		return clean && rerun ? { clean, rerun } : null;
+	} catch {
+		return null;
+	}
+}
+
 function main(): number {
 	const junit = runJunit();
 	const tsc = gate(["bun", "run", "typecheck"]);
 	const lint = gate(["bun", "run", "lint"]);
 	const head = execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: REPO }).toString().trim();
 	const date = new Date().toISOString().slice(0, 10);
+
+	// --- live provenance probes (never hardcode what can be re-verified) ------
+	const EXPECTED_OMP = "19.1.1"; // recorded installed version (spec pin 19.0.1 — drift, OI-1)
+	const EXPECTED_HERDR = "0.9.5";
+	const ompV = probeVersion("omp");
+	const herdrV = probeVersion("herdr");
+	const problems: string[] = [];
+	if (!ompV.ok || ompV.version !== EXPECTED_OMP) {
+		problems.push(`OMP version drift: probed ${ompV.ok ? ompV.version : ompV.raw}, expected ${EXPECTED_OMP}`);
+	}
+	if (!herdrV.ok || herdrV.version !== EXPECTED_HERDR) {
+		problems.push(`Herdr version drift: probed ${herdrV.ok ? herdrV.version : herdrV.raw}, expected ${EXPECTED_HERDR}`);
+	}
+	// README §Verified commands provenance — parse, never literal (F2).
+	let readmeVerified = "(unparsed — README §Verified commands provenance missing)";
+	try {
+		const m = /executed on (\d{4}-\d{2}-\d{2}) at commit `([0-9a-f]+)`/i.exec(readFileSync(join(REPO, "README.md"), "utf8"));
+		if (m) readmeVerified = `executed ${m[1]} at commit ${m[2]}`;
+		else problems.push("README §Verified commands provenance line not parsed (expected 'executed on <date> at commit `<sha>`')");
+	} catch {
+		problems.push("README.md unreadable for §Verified commands provenance");
+	}
 
 	// junit lookups
 	const byFileName = new Map<string, Case[]>();
@@ -996,7 +1041,6 @@ function main(): number {
 		(byFileName.get(k) ?? byFileName.set(k, []).get(k)!).push(c);
 	}
 
-	const problems: string[] = [];
 	const rows: { req: Requirement; status: "pass" | "fail" | "manual-evidence"; cited: string[]; manualCells: string[]; issues: string[] }[] = [];
 
 	for (const req of REQS) {
@@ -1051,7 +1095,17 @@ function main(): number {
 		for (const d of docFails) problems.push(`NFR-06 doc check ${d.id} (${d.file}): /${d.pattern.source}/ not found`);
 	}
 
+	// NFR-06 capture must reflect README provenance re-parsed at generation time (F2).
+	const nfr6 = rows.find((r) => r.req.id === "NFR-06");
+	if (nfr6) {
+		nfr6.manualCells = [
+			"this report §Doc-vs-shipped checklist (DC-1..DC-21) — machine-asserted README/CONTRIBUTING/architecture sections contain shipped-truth content",
+			`README.md §Verified commands — every documented command ${readmeVerified}, output quoted verbatim`,
+		];
+	}
+
 	const sabot = sabotageRows();
+	const restore = sabotageRestore();
 	const counts = { pass: rows.filter((r) => r.status === "pass").length, fail: rows.filter((r) => r.status === "fail").length, manual: rows.filter((r) => r.status === "manual-evidence").length };
 
 	const lines: string[] = [];
@@ -1061,7 +1115,7 @@ function main(): number {
 	lines.push(`> Owner sign-off (P6-R11): **UNSIGNED — the owner signs, the agent only prepares.** See §Sign-off.`);
 	lines.push(``);
 	lines.push(`- Generated: ${date} · commit \`${head}\` · Bun ${Bun.version}`);
-	lines.push(`- Environment: OMP **19.1.1** (installed; spec pin **19.0.1** — open owner decision OI-1) · Herdr **0.9.5**`);
+	lines.push(`- Environment: OMP **${ompV.version ?? "(probe failed)"}** (installed; spec pin **19.0.1** — open owner decision OI-1) · Herdr **${herdrV.version ?? "(probe failed)"}** (probed live: \`omp --version\` / \`herdr --version\`)`);
 	lines.push(`- Test gate: \`bun test\` → **${junit.tests} pass / ${junit.failures} fail** (${junit.suites} suites, ${junit.assertions} assertions)`);
 	lines.push(`- Static gates: \`bun run typecheck\` ${tsc.ok ? "clean" : "**FAILED**"} · \`bun run lint\` ${lint.ok ? `clean (${lint.out.split("\n").pop()})` : "**FAILED**"}`);
 	lines.push(`- Suite summary: \`${junit.stdoutTail.split("\n").slice(-1)[0]}\``);
@@ -1114,7 +1168,7 @@ function main(): number {
 		lines.push(`| ${s.title} | \`src/\` patch in tests/guards/sabotage.md §${s.letter} | ${s.red.replace(/\|/g, "\\|")} |`);
 	}
 	lines.push(``);
-	lines.push(`Clean restore verified: \`git diff -- src/\` empty; \`7 pass, 0 fail, 83 expect() calls\`.`);
+	lines.push(`Clean restore: ${restore ? `${restore.clean}; clean re-run \`${restore.rerun}\`` : "**sabotage.md §Restore verification unparsed — do not treat as verified**"} (parsed from tests/guards/sabotage.md).`);
 	lines.push(``);
 
 	lines.push(`## Live / witnessed captures (index)`);
@@ -1170,6 +1224,9 @@ function main(): number {
 
 	console.log(`wrote ${REPORT_PATH}`);
 	console.log(`rows: ${counts.pass} pass / ${counts.manual} manual-evidence / ${counts.fail} fail of ${rows.length}`);
+	if (junit.failures > 0) problems.push(`suite red: junit failures=${junit.failures}`);
+	if (!tsc.ok) problems.push("typecheck gate failed (bun run typecheck)");
+	if (!lint.ok) problems.push("lint gate failed (bun run lint)");
 	if (junit.failures > 0) console.log(`junit: ${junit.failures} test failure(s)`);
 	if (problems.length > 0) {
 		for (const p of problems) console.log(`PROBLEM: ${p}`);

@@ -77,7 +77,7 @@ Open the overview any time with the read-only slash command:
 
 | Command | Effect |
 | --- | --- |
-| `/lens` | Open (or re-focus inside its tab) the overview. Unknown arguments behave like `/lens`. |
+| `/lens` | Open the overview (no-op if already open; never moves focus). Unknown arguments behave like `/lens`. |
 | `/lens split <workerId>` | Open a no-focus, worker-scoped split for that worker. `/lens split` with no id does nothing. |
 
 Both are no-ops until OMP has handed the extension a session id (the first `session_start`), and
@@ -143,6 +143,9 @@ $ omp --profile=p6t7-clean plugin list --json
   ".../profiles/p6t7-clean/plugins/node_modules/herdr-omp-lens",
   "manifest": { "extensions": ["./src/extension/index.ts"], "version": "0.1.0" },
   "enabled": true } ], "marketplace": [] }
+
+_Above JSON is abridged for readability — the verbatim, unabridged output is recorded in
+[docs/analysis/clean-profile-install.md](docs/analysis/clean-profile-install.md) §2._
 
 $ bash scripts/run-e2e.sh    # recorded run, verbatim summary — docs/analysis/e2e-evidence.md Run A
 exit code: 0   (7 pass / 0 fail / 0 manual / 5 skipped)
