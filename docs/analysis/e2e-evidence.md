@@ -67,10 +67,13 @@ Findings:
 
 ## Manual-evidence steps (exact rerun command)
 
-After Runs D/E/E2 (2026-11-25, owner-witnessed): s1 (except the transient finished-collapse
+After Runs D/E/E2/F (2026-11-25, owner-witnessed): s1 (except the transient finished-collapse
 readback), s2 and s5 are live-proven. Still manual: **s3** (`/lens split` — send-text
-JSON EOF fixed → input-clear + pane-list null-title bugs found and fixed post-E2;
-live witness pending one post-fix run) and **s4** (local-build `-e` session-bind gap →
+JSON EOF fixed → input-clear + pane-list null-title bugs found and fixed post-E2 →
+mechanics probe-verified end-to-end on w1A (`scope: worker alpha-responder
+[connected]` rendered); the automated live step-pass is blocked ONLY by transient
+OMP individual-quota exhaustion in Run F — not a lens defect. Rerun post-reset to
+convert to live PASS) and **s4** (local-build `-e` session-bind gap →
 viewer-reconnect timeout). Rerun: `RUN_E2E_LIVE=1 bash scripts/run-e2e.sh`
 inside a Herdr pane. s4 uses the LOCAL build automatically:
 `omp --no-extensions --config <scratch>/omp-e2e-overlay.yml -e <repo>/src/extension/index.ts`.
@@ -308,3 +311,56 @@ next safe run's stale-sweep; 13 dailies verified identical before/after again.
 safe run's stale-sweep. `herdr workspace list` re-verified: exactly the 13
 daily workspaces (wM, wN, wP, wB, w1, w2, wD, wC, w9, w7, w8, wG, wJ),
 **zero `lens-e2e-*` remaining**, focus on `wN`.
+
+
+## Run F — quota-blocked, s3 probe-verified (`E2E_KEEP_WORKSPACE=1 RUN_E2E_LIVE=1`, 2026-11-25 ~13:18 UTC)
+
+Owner-watched final s3 witness attempt on post-PR#6 main (`9aceb4e`). Disposable
+workspace **w1D** (`lens-e2e-2026-11-25T13-18-36-445Z`); agent `lense2e6445z` bound
+to session `01a212db-bbdf-72f8-85a6-a33b800965e8` — but the **OMP individual quota
+was already exhausted**, so the s1 scout prompt could never dispatch a subagent,
+the overview never auto-opened, and the run short-circuited to skips.
+`w1D` closed post-run via `herdr workspace close w1D`; a stale `w1C` from the
+first aborted launch was swept by the harness stale-sweep.
+
+Result: **7 pass / 0 fail / 1 manual / 4 skipped** in ~322 s, exit 0.
+
+Verbatim summary:
+
+```
+[PASS] setup :: HERDR_ENV=1 — caller pane wN:p1
+[note] setup :: stale disposable closed — w1C (lens-e2e-2026-11-25T13-18-31-205Z)
+[PASS] setup :: daily workspace enumerated (before) — 13 workspaces / 19 tabs / 21 panes
+[note] mode :: live mode — RUN_E2E_LIVE=1 — full lifecycle drive
+[note] s0 :: live mode — create/teardown exercised by s1 + teardown instead
+[PASS] s1 :: disposable workspace created — w1D (lens-e2e-2026-11-25T13-18-36-445Z)
+[PASS] s1 :: shell pane split — w1D:p2 cwd=/private/var/folders/.../lens-e2e-scratch-2026-11-25T13-18-36-445Z-34807
+[PASS] s1 :: omp launched (installed build) — agent=lense2e6445z session=01a212db-bbdf-72f8-85a6-a33b800965e8
+[note] retry :: overview tab auto-open on first spawn — first attempt failed (Error: timeout waiting for overview tab auto-open on first spawn after 150000ms); retrying once
+[note] s1 :: auto-open wait failed — shell pane tail — … | Update Available | New version 19.2.0 is available. Run: omp update | …
+[MANUAL] s1 :: setup + first spawn — env-coupled — Error: timeout waiting for overview tab auto-open on first spawn after 150000ms | rerun: RUN_E2E_LIVE=1 bash scripts/run-e2e.sh
+[SKIP] s2 :: manual close → exactly-one reopen — s1 prerequisites missing
+[SKIP] s3 :: read-only /lens split — overview/shell prerequisites missing
+[SKIP] s5 :: cross-workspace focus preservation — live agent/overview prerequisites missing
+[SKIP] s4 :: OMP restart → history auto-open — live agent/overview prerequisites missing
+[note] teardown :: workspace kept — w1D (lens-e2e-2026-11-25T13-18-36-445Z) — E2E_KEEP_WORKSPACE=1
+[PASS] s6 :: daily workspace untouched — 13 workspaces, 19 tabs, 21 panes — identical before/after (e2e ids excluded)
+[PASS] s6 :: no lens-e2e-* workspace left behind — disposable scope clean
+```
+
+Quota proof — verbatim from `evidence/s1-shell-tail.txt` (the launched TUI rendered
+the scout prompt, then rejected it):
+
+```
+Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 47m59s.
+※ recap: ⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 43m57s.
+❯ ⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 47m57s.
+```
+
+Assessment: the s1 timeout is an **environmental quota block, not a lens defect** —
+the prompt reached the TUI (visible verbatim) and was refused by the provider
+quota gate, so no subagent could spawn and no overview could open. s3's own
+mechanics are already probe-verified end-to-end (PR#6: input-clear + scope-content
+detection; live manual probe on w1A rendered `scope: worker alpha-responder
+[connected]`). The automated step-pass needs one `RUN_E2E_LIVE=1` rerun after the
+quota reset (~14:12 UTC); s4 stays manual (-e session-bind gap, separate ticket).
