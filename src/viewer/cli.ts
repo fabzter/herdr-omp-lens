@@ -176,6 +176,9 @@ export interface RunViewerDeps {
 interface TranscriptSlot {
 	workerId?: string;
 	key?: string;
+	/** Identity of the last rendered target (worker@file:thinking); the stamp
+	 * is deliberately excluded so progress churn keeps prior text. */
+	identity?: string;
 	text?: string;
 	error?: string;
 }
@@ -280,32 +283,52 @@ export async function runViewer(deps: RunViewerDeps): Promise<number> {
 		return { id: worker.id, file, stamp: worker.updatedAt };
 	};
 
-	const refreshTranscript = (force: boolean): void => {
-		const target = transcriptTarget();
-		const key =
-			target === null
-				? undefined
-				: `${target.id}@${target.file}#${target.stamp}:${ui.thinkingVisible}:${renderEpoch}`;
-		if (!force && key === slot.key) return;
-		slot.key = key;
-		slot.workerId = target?.id;
-		slot.text = undefined;
-		slot.error = undefined;
-		if (target === null) return;
+	/**
+	 * Two-level freshness: `identity` (worker/file/thinking) decides whether
+	 * the displayed text still applies — a stamp-only churn (progress updates
+	 * touch updatedAt ~150ms cadence) must NOT blank the last good render to
+	 * "(transcript loading…)". `key` additionally carries the stamp + epoch
+	 * so a completed render re-fires on new data or an explicit refresh.
+	 *
+	 * Single-flight (P3-R11): at most one renderWorkerTranscript child runs
+	 * at a time. Refreshes landing while one is in flight only update
+	 * slot.key; when the render settles, pump() launches exactly ONE render
+	 * for the latest key — bursts coalesce, superseded work is never spawned.
+	 */
+	let renderInFlight = false;
+	let launchedKey: string | undefined;
+
+	const computeKey = (
+		target: { id: string; file: string; stamp: number },
+		thinking: boolean,
+	): string => `${target.id}@${target.file}:${thinking}#${target.stamp}:${renderEpoch}`;
+
+	const launchRender = (
+		target: { id: string; file: string; stamp: number },
+		key: string,
+		thinking: boolean,
+	): void => {
+		renderInFlight = true;
+		launchedKey = key;
 		const epoch = renderEpoch;
+		const identity = `${target.id}@${target.file}:${thinking}`;
 		void (async () => {
 			try {
-				const text = await render(target.file, ui.thinkingVisible);
-				if (slot.key === key && epoch === renderEpoch && !quit) {
+				const text = await render(target.file, thinking);
+				if (slot.identity === identity && epoch === renderEpoch && !quit) {
 					slot.text = text;
 					slot.error = undefined;
 					paint();
 				}
 			} catch (e) {
-				if (slot.key === key && epoch === renderEpoch && !quit) {
+				if (slot.identity === identity && epoch === renderEpoch && !quit) {
 					slot.error = e instanceof Error ? e.message : String(e);
 					paint();
 				}
+			} finally {
+				renderInFlight = false;
+				pump(); // trailing refresh: launches iff the key moved on
+				paint();
 			}
 		})();
 	};

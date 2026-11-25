@@ -211,6 +211,7 @@ class RecordingBridge {
 	private readonly server: SocketListener;
 	private readonly closed: Promise<void>;
 	private readonly resolveClosed: () => void;
+	private client: Socket | null = null;
 
 	constructor(hello: string) {
 		this.dir = mkdtempSync(join(tmpdir(), "lens-cli-test-"));
@@ -219,11 +220,13 @@ class RecordingBridge {
 		const { promise, resolve } = Promise.withResolvers<void>();
 		this.closed = promise;
 		this.resolveClosed = resolve;
+		const self = this;
 		const resolveClosed = this.resolveClosed;
 		this.server = Bun.listen({
 			unix: this.socketPath,
 			socket: {
 				open(s: Socket) {
+					self.client = s;
 					s.write(`${hello}\n`);
 				},
 				data(_s: Socket, data: Buffer) {
@@ -234,6 +237,13 @@ class RecordingBridge {
 				},
 			},
 		});
+	}
+
+	/** Push a server→client frame mid-session (upserts, notices, …). */
+	send(line: string): void {
+		const s = this.client;
+		if (s === null) throw new Error("no client connected");
+		s.write(`${line}\n`);
 	}
 
 	async close(): Promise<void> {

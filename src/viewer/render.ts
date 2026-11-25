@@ -56,6 +56,7 @@ export function inspector(w: WorkerSnapshot): string[] {
 	if (w.parentToolCallId !== undefined) lines.push(`parent tool call: ${w.parentToolCallId}`);
 	if (w.index !== undefined) lines.push(`index: ${w.index}`);
 	const counters = formatCounters(w.counters);
+	lines.push(`updated: ${w.updatedAt}`);
 	if (counters !== "") lines.push(`counters: ${counters}`);
 	if (w.sessionFile !== undefined) lines.push(`session: ${w.sessionFile}`);
 	return lines;
