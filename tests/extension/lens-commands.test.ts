@@ -378,7 +378,7 @@ describe("activation wiring", () => {
 		expect(h.topo.calls).toContain("onRosterEmpty");
 	});
 
-	test("the single HistorySource feeds the bridge opts.history seam", async () => {
+	test("the single HistorySource feeds the bridge opts.history seam (merged, live-wins)", async () => {
 		const h = activate({
 			history: historySource(() =>
 				Promise.resolve({ workers: [HISTORY_WORKER], warnings: [], scannedAt: 1 }),
@@ -388,13 +388,22 @@ describe("activation wiring", () => {
 		if (startBridgeFn === undefined) {
 			throw new Error("activation must hand a wrapped startBridge to observation");
 		}
-		// Before the scan lands, the merged callback defers to the caller's history.
+		// The merged callback (not opts.history) is the seam (RC-3): before the
+		// scan lands it is live-only — the caller's history is never consulted.
 		await startBridgeFn(new Roster(), { history: () => [FALLBACK_WORKER] });
-		expect(h.bridgeFactoryCalls[0]?.history?.()).toEqual([FALLBACK_WORKER]);
+		expect(h.bridgeFactoryCalls[0]?.history?.()).toEqual([]);
 
 		await lensReady(); // scan consumed deterministically
-		await startBridgeFn(new Roster(), { history: () => [FALLBACK_WORKER] });
-		expect(h.bridgeFactoryCalls[1]?.history?.()).toEqual([HISTORY_WORKER]);
+		const roster = new Roster();
+		roster.applySpawn(spawn("live-9"));
+		roster.applyLifecycle(lifecycle("live-9", "started"));
+		roster.applySpawn(spawn(HISTORY_WORKER.id)); // collides with the scan
+		roster.applyLifecycle(lifecycle(HISTORY_WORKER.id, "started"));
+		await startBridgeFn(roster, { history: () => [FALLBACK_WORKER] });
+		const merged = h.bridgeFactoryCalls[1]?.history?.() ?? [];
+		expect(merged.map((w) => w.id)).toEqual(["live-9", HISTORY_WORKER.id]);
+		const collide = merged.find((w) => w.id === HISTORY_WORKER.id);
+		expect(collide?.historical).not.toBe(true); // live copy won, no duplicate
 	});
 
 	test("non-empty history scan triggers onHistoryPresent (D2 auto-open)", async () => {

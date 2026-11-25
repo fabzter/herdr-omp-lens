@@ -2,7 +2,8 @@ import { type CallerContext, callerContext } from "../herdr/context";
 import type { Message } from "../protocol/types";
 import type { LensContext, LensExtensionApi } from "./api";
 import { startBridge } from "./bridge";
-import { createHistoryStub, type HistoryScan, type HistorySource } from "./history-stub";
+import { createHistorySource, mergeLiveAndHistorical } from "./history/index";
+import type { HistoryScan, HistorySource } from "./history-stub";
 import {
 	type Observation,
 	type ObservationDeps,
@@ -34,9 +35,15 @@ export interface LensExtensionDeps extends ObservationDeps {
 	readonly onObservationError?: (err: unknown) => void;
 	/**
 	 * Test seam: the single activation-owned HistorySource (RC-6 / D2 soft
-	 * coupling). Default: the empty P5 stub — the real artifact scan is P5.
+	 * coupling). Default: the real artifact-tree scan (P5) over
+	 * `~/.omp/agent/sessions/<encoded-cwd>` — read-only, fail-soft.
 	 */
 	readonly history?: HistorySource;
+	/**
+	 * `omp` binary for the scan's render seam (forwarded to
+	 * `createHistorySource`; default "omp").
+	 */
+	readonly ompBin?: string;
 	/**
 	 * Test seam: topology factory (default: `createTopologyManager`). The
 	 * real session id and the bridge viewer probe are wired by activation.
@@ -118,7 +125,7 @@ export default function lensExtension(pi: LensExtensionApi, deps?: LensExtension
 
 	const start = deps?.startObservation ?? startObservation;
 	const onError = deps?.onObservationError ?? defaultObservationErrorSink;
-	const history = deps?.history ?? createHistoryStub();
+	const history = deps?.history ?? createHistorySource({ ompBin: deps?.ompBin ?? "omp" });
 	const makeTopology = deps?.createTopologyManager ?? createTopologyManager;
 
 	const rt: LensRuntime = { historyPresent: false, historySignaled: false, stopped: false };
@@ -206,7 +213,7 @@ export default function lensExtension(pi: LensExtensionApi, deps?: LensExtension
 		startBridge: (roster, opts) =>
 			(deps?.startBridge ?? startBridge)(roster, {
 				...opts,
-				history: () => rt.lastScan?.workers.slice() ?? opts.history?.() ?? [],
+				history: () => mergeLiveAndHistorical(roster.snapshot(), rt.lastScan?.workers ?? []),
 			}),
 	};
 
@@ -238,6 +245,26 @@ export default function lensExtension(pi: LensExtensionApi, deps?: LensExtension
 		// alone never trigger onHistoryPresent.
 		rt.historyPresent = scan.workers.length > 0;
 		ensureTopology(); // fires onHistoryPresent when the scan is non-empty
+		if (rt.stopped) return;
+		// Late-scan deltas (F-08): a viewer that connected before the scan
+		// resolved gets the persisted workers as worker.upsert{historical}
+		// (live-wins: ids already live in the roster are not replayed).
+		const liveIds = new Set(obs.roster.snapshot().map((w) => w.id));
+		for (const w of scan.workers) {
+			if (w.historical === true && !liveIds.has(w.id)) {
+				obs.bridge.broadcast({ v: 1, type: "worker.upsert", worker: w });
+			}
+		}
+		// Fail-soft visibility (NFR-02): partial scan problems reach viewers
+		// as exactly ONE warn notice — never one broadcast per warning.
+		if (scan.warnings.length > 0) {
+			obs.bridge.broadcast({
+				v: 1,
+				type: "notice",
+				level: "warn",
+				message: `history scan degraded (${scan.warnings.length} warnings): ${scan.warnings.join("; ")}`,
+			});
+		}
 	};
 	// onError rides .then's reject slot so a start rejection reports at the
 	// same microtask depth the P2-4 wiring had; the trailing catch covers
