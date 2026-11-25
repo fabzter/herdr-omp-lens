@@ -3,11 +3,11 @@
 > GENERATED FILE — do not edit. Regenerate with `bun scripts/gen-dod-report.ts`.
 > Owner sign-off (P6-R11): **UNSIGNED — the owner signs, the agent only prepares.** See §Sign-off.
 
-- Generated: 2026-11-25 · commit `515d91d` · Bun 1.3.14
+- Generated: 2026-11-25 · commit `ca1b945` · Bun 1.3.14
 - Environment: OMP **19.1.1** (installed == spec pin **19.1.1** — OI-1 resolved 2026-11-25, re-pinned from 19.0.1) · Herdr **0.9.5** (probed live: `omp --version` / `herdr --version`)
 - Test gate: `bun test` → **460 pass / 0 fail** (155 suites, 1658 assertions)
-- Static gates: `bun run typecheck` clean · `bun run lint` clean (Checked 66 files in 51ms. No fixes applied.)
-- Suite summary: `Ran 460 tests across 35 files. [3.92s]`
+- Static gates: `bun run typecheck` clean · `bun run lint` clean (Checked 66 files in 21ms. No fixes applied.)
+- Suite summary: `Ran 460 tests across 35 files. [3.77s]`
 
 ## Requirement matrix
 
@@ -23,14 +23,14 @@ Every FR-01..15 + NFR-01..06 has exactly one row. Legend:
 | FR-03 | Local bridge — unix-socket NDJSON, 0600 socket, versioned handshake | pass | 7 tests pass | — |
 | FR-04 | Overview tab — one no-focus `OMP subagents` tab on first spawn | pass | 5 tests pass | 2 captures |
 | FR-05 | Reopen after close — next spawn reopens exactly one tab | pass | 4 tests pass | 1 capture |
-| FR-06 | Optional split — no-focus worker-scoped split, close ≠ cancel | manual-evidence | 6 tests pass | 1 capture (⚠ E2E s3 /lens split — env-coupled pane-get JSON EOF flake in Runs C and D) |
+| FR-06 | Optional split — no-focus worker-scoped split, close ≠ cancel | manual-evidence | 6 tests pass | 1 capture (⚠ E2E s3 /lens split — typed-command input-clear + pane-list null-title bugs fixed; live witness pending post-E2) |
 | FR-07 | OMP-like detail — roster fields, inspector, live transcript | pass | 5 tests pass | — |
 | FR-08 | Finished collapse — completed workers collapse by default | pass | 4 tests pass | 1 capture |
-| FR-09 | History — persisted transcripts after restart, marked not-live | manual-evidence | 6 tests pass | 1 capture (⚠ E2E s4 restart→history — env-coupled local-build session-bind gap in Runs C and D) |
+| FR-09 | History — persisted transcripts after restart, marked not-live | manual-evidence | 6 tests pass | 1 capture (⚠ E2E s4 restart→history — env-coupled local-build session-bind gap in Runs C/D/E/E2) |
 | FR-10 | Direct-only scope — nested and other-session workers excluded | pass | 3 tests pass | — |
 | FR-11 | Read-only — no control frames, no control affordance | pass | 6 tests pass | 1 capture |
 | FR-12 | Fail-soft — never blocks an OMP turn; degrade to one notice | pass | 6 tests pass | 1 capture |
-| FR-13 | No focus theft — every topology op is no-focus | manual-evidence | 5 tests pass | 2 captures (⚠ E2E s5 cross-workspace focus — env-coupled spawn timeout in Runs C and D (likely same bind-gap root cause)) |
+| FR-13 | No focus theft — every topology op is no-focus | pass | 5 tests pass | 2 captures |
 | FR-14 | Ownership invariants — view ops never spawn or remove workers | pass | 4 tests pass | 1 capture |
 | FR-15 | Reusable package — omp plugin link/install, humane README+docs | pass | 4 tests pass | 1 capture |
 | NFR-01 | Local-only — unix socket 0600/0700, no network, no secrets | pass | 6 tests pass | — |
@@ -40,7 +40,7 @@ Every FR-01..15 + NFR-01..06 has exactly one row. Legend:
 | NFR-05 | Testability — reducer/protocol/adapter units + isolated-session integration + tamper-proven | pass | 4 tests pass | 2 captures |
 | NFR-06 | Docs reconcile — docs match shipped behavior exactly | pass | — | 2 captures |
 
-Totals: **18 pass · 3 manual-evidence · 0 fail** out of 21 requirements.
+Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 
 ## Per-requirement evidence
 
@@ -105,7 +105,7 @@ Totals: **18 pass · 3 manual-evidence · 0 fail** out of 21 requirements.
 - `tests/extension/lens-commands.test.ts :: "/lens split without an id does nothing" (line 335, pass)`
 - `tests/viewer/cli.test.ts :: "worker-scoped launch filters the screen to the scoped id only" (line 357, pass)`
 
-- manual: docs/analysis/e2e-evidence.md §Manual-evidence steps — E2E step s3 (/lens split live) — STILL manual after owner-witnessed Run D 2026-11-25: `herdr pane get` JSON Parse error (Unexpected EOF), env-coupled flake, retry-once did not clear; /lens registration live-confirmed via command palette
+- manual: docs/analysis/e2e-evidence.md §Manual-evidence steps — E2E step s3 (/lens split live) — STILL manual after owner-witnessed Runs D/E/E2 2026-11-25: Run D/E pane send-text JSON EOF flake (fixed: send-text → herdrProc, read retry); Run E2 uncovered the input-clear bug (/lens/lens split typed → submitted as prompt) — ctrl+u fix + scope-content detection landed, verified by live manual probe (w1A:t4 scoped pane rendered 'scope: worker alpha-responder [connected]'), full live witness still outstanding
 
 ### FR-07 — OMP-like detail — roster fields, inspector, live transcript · status: pass
 
@@ -133,7 +133,7 @@ Totals: **18 pass · 3 manual-evidence · 0 fail** out of 21 requirements.
 - `tests/viewer/render.test.ts :: "history section renders with not-live label (P3-R9)" (line 167, pass)`
 - `tests/viewer/state.test.ts :: "live upsert wins over a historical entry for the same id (RC-3)" (line 106, pass)`
 
-- manual: docs/analysis/e2e-evidence.md §Manual-evidence steps — E2E step s4 (OMP restart → auto-open + not-live history) — STILL manual after owner-witnessed Run D 2026-11-25: local-build (-e) session-bind gap (agent_session never bound) → viewer-reconnect timeout 30s×2; tab reuse/rebind DID pass live
+- manual: docs/analysis/e2e-evidence.md §Manual-evidence steps — E2E step s4 (OMP restart → auto-open + not-live history) — STILL manual after owner-witnessed Runs D/E/E2 2026-11-25: local-build (-e) session-bind gap (agent_session never bound) → viewer-reconnect timeout 30s×2; tab reuse/rebind DID pass live in every run
 
 ### FR-10 — Direct-only scope — nested and other-session workers excluded · status: pass
 
@@ -163,7 +163,7 @@ Totals: **18 pass · 3 manual-evidence · 0 fail** out of 21 requirements.
 
 - manual: tests/guards/sabotage.md §(f) — sabotage red — an unguarded notice subscriber throws "dead bridge" into the handler
 
-### FR-13 — No focus theft — every topology op is no-focus · status: manual-evidence
+### FR-13 — No focus theft — every topology op is no-focus · status: pass
 
 - `tests/guards/invariants.test.ts :: "(c) FR-13: every adapter create/split/run is no-focus; guard still throws" (line 388, pass)`
 - `tests/extension/topology-herdr.test.ts :: "no-focus surface: topology never emits focus/ forbidden calls (P4-R5/R6 tamper)" (line 235, pass)`
@@ -172,7 +172,7 @@ Totals: **18 pass · 3 manual-evidence · 0 fail** out of 21 requirements.
 - `tests/herdr/adapter.test.ts :: "sends pane.split with target_pane_id, direction, focus:false, env passthrough" (line 111, pass)`
 
 - manual: docs/analysis/clean-profile-install.md §3 — clean-profile run — focused workspace stayed `wN` before/during/after (live, not cross-workspace spawn)
-- manual: docs/analysis/e2e-evidence.md §Manual-evidence steps — E2E step s5 (cross-workspace spawn focus) — STILL manual after owner-witnessed Run D 2026-11-25: spawn-lands timeout 150s×2, correlated with the s4 local-build session-bind gap (agent_session=undefined)
+- manual: docs/analysis/e2e-evidence.md §Manual-evidence steps — E2E step s5 (cross-workspace spawn focus) — LIVE-WITNESSED in owner-witnessed Run E 2026-11-25 (w19): spawn landed while focus on wN, 'focus stayed wN:t1 (wN)' (FR-13). Run E2 re-run env-coupled (OMP quota exhausted mid-run — spawn prompt never dispatched)
 
 ### FR-14 — Ownership invariants — view ops never spawn or remove workers · status: pass
 
@@ -317,7 +317,7 @@ Clean restore: `git diff -- src/` empty; clean re-run `7 pass, 0 fail, 83 expect
 | ID | Item | Owner action | Source |
 | -- | ---- | ------------ | ------ |
 | OI-1 | Version drift — installed OMP 19.1.1 vs spec pin 19.0.1 | RESOLVED 2026-11-25 — owner approved re-pin to 19.1.1; forward-looking pins moved, evidence stays valid (produced on the now-pinned version) | docs/analysis/clean-profile-install.md §1; .superpowers/sdd/2026-11-24-v1-hardening/progress.md (P6-5 OPEN OWNER DECISION) |
-| OI-2 | E2E live lifecycle steps s2–s5 (close→reopen, /lens split, restart→history, cross-workspace focus) | PARTIALLY RESOLVED 2026-11-25 — owner-witnessed Run D live-proved s1/s2 (FR-05 cleared); s3 (pane-get JSON EOF), s4 (local-build bind gap), s5 (spawn timeout, correlated) remain env-coupled manual — rerun `RUN_E2E_LIVE=1 bash scripts/run-e2e.sh` or convert to recorded limitations at sign-off | docs/analysis/e2e-evidence.md §Manual-evidence steps; progress.md (P6-6 CONDITION) |
+| OI-2 | E2E live lifecycle steps s2–s5 (close→reopen, /lens split, restart→history, cross-workspace focus) | PARTIALLY RESOLVED 2026-11-25 — owner-witnessed Runs D/E/E2 live-proved s1/s2/s5 (FR-05 + FR-13 cleared); s3 (/lens split: send-text EOF fixed → input-clear + null-title bugs found and fixed, live witness still pending), s4 (local-build bind gap) remain env-coupled manual — rerun `RUN_E2E_LIVE=1 bash scripts/run-e2e.sh` or convert to recorded limitations at sign-off | docs/analysis/e2e-evidence.md §Manual-evidence steps; progress.md (P6-6 CONDITION) |
 | OI-3 | Deferred review minors (non-blocking follow-ups from P6 reviews) | triage at final review; each already has a sibling assertion or bounded failure mode | progress.md deferred-minor lines: invariants (f) h.errors check; scan-herdr-calls errorCtx exemption; e2e unbounded `herdr --version` preflight + stale pre-restart ids; clean-profile scratch teardown; P5 roll-up minors |
 
 ## Sign-off (owner only)
