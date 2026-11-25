@@ -203,6 +203,15 @@ export default function lensExtension(pi: LensExtensionApi, deps?: LensExtension
 		ensureTopology();
 	});
 
+	// session_shutdown tears the lens down (P6-R5): the session that opened
+	// the bridge socket owns its cleanup. Fire-and-forget — the handler
+	// returns synchronously; the async stopLens() chain runs off the OMP
+	// hot path (P6-R2(g)). stopLens is idempotent, so a re-activated
+	// lensExtension registering a second handler can never double-stop.
+	pi.on("session_shutdown", () => {
+		void stopLens();
+	});
+
 	// --- activation ----------------------------------------------------------
 
 	// The activation path owns the ONE HistorySource (D2 soft coupling):
