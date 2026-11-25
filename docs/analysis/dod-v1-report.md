@@ -3,11 +3,11 @@
 > GENERATED FILE — do not edit. Regenerate with `bun scripts/gen-dod-report.ts`.
 > Owner sign-off (P6-R11): **UNSIGNED — the owner signs, the agent only prepares.** See §Sign-off.
 
-- Generated: 2026-11-25 · commit `d0108ed` · Bun 1.3.14
+- Generated: 2026-11-25 · commit `a7669a6` · Bun 1.3.14
 - Environment: OMP **19.1.1** (installed; spec pin **19.0.1** — open owner decision OI-1) · Herdr **0.9.5** (probed live: `omp --version` / `herdr --version`)
-- Test gate: `bun test` → **460 pass / 0 fail** (155 suites, 1659 assertions)
-- Static gates: `bun run typecheck` clean · `bun run lint` clean (Checked 66 files in 54ms. No fixes applied.)
-- Suite summary: `Ran 460 tests across 35 files. [3.86s]`
+- Test gate: `bun test` → **460 pass / 0 fail** (155 suites, 1658 assertions)
+- Static gates: `bun run typecheck` clean · `bun run lint` clean (Checked 66 files in 51ms. No fixes applied.)
+- Suite summary: `Ran 460 tests across 35 files. [3.82s]`
 
 ## Requirement matrix
 
@@ -229,7 +229,7 @@ Totals: **16 pass · 5 manual-evidence · 0 fail** out of 21 requirements.
 - `tests/herdr/guards.test.ts :: "computed params keys cannot smuggle focus or tab_id" (line 91, pass)`
 - `tests/extension/topology.test.ts :: "owned panes are reported with source, never as an agent (P4-R13)" (line 216, pass)`
 - `tests/viewer/cli.test.ts :: "no viewer file calls any forbidden pane/agent API or imports the pane adapter" (line 159, pass)`
-- `tests/guards/invariants.test.ts :: "(g) F-15: every pi.on / pi.events.on / command handler is synchronous" (line 519, pass)`
+- `tests/guards/invariants.test.ts :: "(g) F-15: every pi.on / pi.events.on / command handler is synchronous" (line 520, pass)`
 
 - manual: tests/guards/sabotage.md §(c)/§(g) — sabotage red — focus:true flips and async handlers both fail at the guarded boundary
 
