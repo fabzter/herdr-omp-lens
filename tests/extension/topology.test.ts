@@ -33,7 +33,7 @@ interface RecordedCall {
 }
 
 /** Mock adapter: records calls, keeps an authoritative pane set, captures handlers. */
-function mockAdapter(opts: { failOn?: string[] } = {}) {
+function mockAdapter(opts: { failOn?: string[]; deferSubscribe?: boolean } = {}) {
 	const calls: RecordedCall[] = [];
 	const panes = new Map<string, PaneInfo>();
 	let handlers: LifecycleHandlers = {};
@@ -41,6 +41,7 @@ function mockAdapter(opts: { failOn?: string[] } = {}) {
 	let paneCounter = 0;
 	let closedSubs = 0;
 	const failOn = new Set(opts.failOn ?? []);
+	let subResolve: (() => void) | null = null;
 
 	function maybeFail(method: string): void {
 		if (failOn.has(method)) throw new Error(`mock adapter failure: ${method}`);
@@ -93,11 +94,17 @@ function mockAdapter(opts: { failOn?: string[] } = {}) {
 			calls.push({ method: "subscribeLifecycle", args: [] });
 			maybeFail("subscribeLifecycle");
 			handlers = h;
-			return {
+			const sub: Subscription = {
 				async close() {
 					closedSubs += 1;
 				},
 			};
+			if (opts.deferSubscribe === true) {
+				const deferred = Promise.withResolvers<Subscription>();
+				subResolve = () => deferred.resolve(sub);
+				return deferred.promise;
+			}
+			return sub;
 		},
 		async reportMetadata(paneId: string, meta: PaneMetadata) {
 			calls.push({ method: "reportMetadata", args: [paneId, meta] });
@@ -117,6 +124,9 @@ function mockAdapter(opts: { failOn?: string[] } = {}) {
 		},
 		count(method: string) {
 			return calls.filter((c) => c.method === method).length;
+		},
+		resolveSubscribe() {
+			subResolve?.();
 		},
 	};
 }
@@ -419,5 +429,69 @@ describe("topology manager — degradation + stop", () => {
 		expect(m.closedSubs).toBe(1);
 		await manager.onWorkerSpawned();
 		expect(m.count("createOverviewTab")).toBe(1);
+	});
+});
+
+describe("topology manager — review-fix regressions", () => {
+	test("F1: survivor rebind relaunches the viewer with refreshed LENS_* env (P4-R4/D2)", async () => {
+		const m = mockAdapter();
+		// A surviving "OMP subagents" pane from a PREVIOUS OMP session
+		m.panes.set("old-pane", {
+			paneId: "old-pane",
+			tabId: "old-tab",
+			workspaceId: CTX.workspaceId,
+			title: OVERVIEW_TAB_LABEL,
+		});
+		const { manager } = make({ adapter: m.adapter, sessionId: "sess-new" });
+		await manager.onWorkerSpawned();
+		expect(m.count("createOverviewTab")).toBe(0); // rebind, not recreate
+		expect(manager.state()).toBe("open");
+		const run = m.calls.find((c) => c.method === "runInPane" && c.args[0] === "old-pane");
+		expect(run).toBeDefined();
+		const command = String(run?.args[1]);
+		expect(command).toContain(`LENS_SOCKET_PATH='${BRIDGE}'`);
+		expect(command).toContain("LENS_SESSION='sess-new'");
+		expect(command).toContain(VIEWER_CMD);
+		await manager.stop();
+	});
+
+	test("F2: a split moved out of the tab does not block tab.closed confirm (FR-05)", async () => {
+		const m = mockAdapter();
+		const { manager } = make({ adapter: m.adapter });
+		await manager.onWorkerSpawned();
+		const { paneId: splitPane } = await manager.openWorkerSplit("w-1");
+		// user drags the split out of the OMP subagents tab — id rewrite on move
+		m.handlers.onPaneMoved?.({
+			previousPaneId: splitPane,
+			previousWorkspaceId: CTX.workspaceId,
+			previousTabId: "tab-1",
+			pane: { paneId: splitPane, tabId: "tab-other", workspaceId: CTX.workspaceId },
+		});
+		await settle(manager);
+		// now the tab itself closes: overview pane gone, moved-out split still live
+		m.panes.delete("pane-1");
+		m.handlers.onTabClosed?.({ workspaceId: CTX.workspaceId, tabId: "tab-1" });
+		await settle(manager);
+		expect(manager.state()).toBe("closed");
+		// next spawn reopens exactly one fresh view (FR-05)
+		await manager.onWorkerSpawned();
+		expect(m.count("createOverviewTab")).toBe(2);
+		await manager.stop();
+	});
+
+	test("F3: stop() closes a subscription assigned mid-drain (event-stream leak)", async () => {
+		const m = mockAdapter({ deferSubscribe: true });
+		const { manager } = make({ adapter: m.adapter });
+		const spawned = manager.onWorkerSpawned();
+		// let the queued transition reach the deferred subscribeLifecycle call
+		for (let i = 0; i < 200 && m.count("subscribeLifecycle") === 0; i++) {
+			await Promise.resolve();
+		}
+		expect(m.count("subscribeLifecycle")).toBe(1);
+		// stop() drains while subscribe is still unresolved, then it resolves late
+		const stopping = manager.stop();
+		m.resolveSubscribe();
+		await Promise.all([spawned, stopping]);
+		expect(m.closedSubs).toBe(1);
 	});
 });

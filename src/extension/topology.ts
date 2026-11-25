@@ -189,7 +189,18 @@ export function createTopologyManager(
 	async function ensureSubscribed(): Promise<void> {
 		if (stopped || workspaceGone) throw new Error("topology manager inactive");
 		if (subscription === null) {
-			subscription = await adapter.subscribeLifecycle(lifecycleHandlers());
+			const sub = await adapter.subscribeLifecycle(lifecycleHandlers());
+			// stop() may have captured subscription=null mid-await: never leak a
+			// stream that resolves after the manager froze.
+			if (stopped || workspaceGone) {
+				try {
+					await sub.close();
+				} catch {
+					// closing a stillborn stream must not throw
+				}
+				throw new Error("topology manager inactive");
+			}
+			subscription = sub;
 		}
 	}
 	function viewerEnv(extra?: Record<string, string>): Record<string, string> {
@@ -200,10 +211,27 @@ export function createTopologyManager(
 		};
 	}
 
+	/**
+	 * POSIX single-quote a value for inline shell env. The relaunch command is
+	 * pane.send_input text, so LENS_* must ride the command line — pane env is
+	 * only honored by tab.create/pane.split (F-11).
+	 */
+	function shellQuote(value: string): string {
+		return `'${value.replace(/'/g, `'\\''`)}'`;
+	}
+
+	/** env prefix for the survivor-rebind relaunch (P4-R4: refreshed bridge env). */
+	function viewerEnvPrefix(): string {
+		return (
+			`LENS_SOCKET_PATH=${shellQuote(bridgeSocketPath)} ` + `LENS_SESSION=${shellQuote(sessionId)}`
+		);
+	}
+
 	// --- subscription (P4-R1: before the first create) -------------------------
 	function lifecycleHandlers(): LifecycleHandlers {
 		const enqueueEvent = (fn: () => Promise<void>): void => {
 			if (stopped) return;
+
 			enqueue(fn).catch(() => {
 				// adapter errors inside handlers degrade fail-soft, never propagate
 			});
@@ -253,7 +281,9 @@ export function createTopologyManager(
 		);
 		if (survivor !== undefined) {
 			overview = { tabId: survivor.tabId, paneId: survivor.paneId };
-			await adapter.runInPane(survivor.paneId, viewerCommand);
+			// P4-R4/F-11: env is honored only at tab.create — the relaunch must
+			// carry the NEW session's LENS_* inline, else the viewer dials the dead socket.
+			await adapter.runInPane(survivor.paneId, `${viewerEnvPrefix()} ${viewerCommand}`);
 			await adapter.reportMetadata(survivor.paneId, {
 				source: TOPOLOGY_METADATA_SOURCE,
 				title: OVERVIEW_TAB_LABEL,
@@ -294,8 +324,10 @@ export function createTopologyManager(
 
 	async function handleTabClosed(tabId: string): Promise<void> {
 		if (overview === null || overview.tabId !== tabId) return;
-		// V-HDR-3: tab.closed is a hint — the pane may have been moved out first.
-		if (!(await confirmedGone([overview.paneId, ...splits.values()]))) return;
+		// V-HDR-3: tab.closed is a hint — confirm the overview pane is gone.
+		// Splits are pruned independently (pane.closed/reconcile): a split moved
+		// OUT of this tab must not block the confirm (FR-05 reopen).
+		if (!(await confirmedGone([overview.paneId]))) return;
 		clearOverviewClosed();
 	}
 
@@ -381,7 +413,7 @@ export function createTopologyManager(
 			try {
 				await ensureOverviewOpen();
 			} catch (err) {
-				degrade(err); // P4-R11: fail-soft — the spawn signal still flows to P2/P3
+				if (!stopped) degrade(err); // P4-R11: fail-soft; frozen manager is inert, not degraded
 			}
 		});
 	}
@@ -442,9 +474,11 @@ export function createTopologyManager(
 		async stop(): Promise<void> {
 			if (stopped) return;
 			stopped = true;
+			await queueTail; // drain in-flight transitions before tearing down
+			// Re-read AFTER the drain: a queued open may have assigned a late
+			// subscription (ensureSubscribed also self-closes, belt-and-suspenders).
 			const sub = subscription;
 			subscription = null;
-			await queueTail; // drain in-flight transitions before tearing down
 			if (sub !== null) {
 				try {
 					await sub.close();
