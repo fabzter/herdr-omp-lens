@@ -364,3 +364,23 @@ mechanics are already probe-verified end-to-end (PR#6: input-clear + scope-conte
 detection; live manual probe on w1A rendered `scope: worker alpha-responder
 [connected]`). The automated step-pass needs one `RUN_E2E_LIVE=1` rerun after the
 quota reset (~14:12 UTC); s4 stays manual (-e session-bind gap, separate ticket).
+
+## Owner manual corroboration — Part A (interactive, 2026-11-25 ~13:40 UTC)
+
+The owner independently followed the interactive guide (Part A) in a disposable
+workspace and **corroborated all steps**: created a throwaway workspace, launched
+OMP (installed build), delegated a task, and watched the `OMP subagents` tab
+auto-open no-focus with the viewer `[connected]` rendering the live worker;
+exercised the read-only nav keys. This is an owner-witnessed confirmation of
+s1-class behavior (auto-open + viewer + no-focus) outside the scripted harness.
+Part B (s3 split / s4 restart / s5 cross-workspace) in progress — the owner hit a
+fast-finished scout (roster empties before `/lens split` can target a live worker);
+guidance issued to delegate a longer-running worker and type the slash command in
+the OMP TUI pane (not the read-only viewer).
+
+**Update (~13:55 UTC): owner confirmed s3 + s5 via the sleep-worker recipe**
+(long-running worker so the roster stays live; `/lens split <id>` in the OMP TUI
+pane; cross-workspace focus held). FR-06 and FR-13 are now owner-witnessed.
+Owner UX feedback captured (multiple OMP subagents tabs observed; split opens a
+new tab rather than an in-tab split; request for an OMP-like list+detail layout
+and using OMP's plugin TUI lib) — under investigation as post-sign-off UX work.
