@@ -37,7 +37,7 @@ namespace for v2), Herdr adapter, docs/tests.
   production transcript pipeline for fidelity; additive Herdr topology; clean path to v2 control via
   the reserved namespace.
 - **Negative / risk:** relies on the **undocumented** `pi.events` ↔ `task:subagent:*` contract
-  (R-01). Mitigation: pin to OMP 19.1.1 (re-pinned from 19.0.1 per owner OI-1 decision 2026-11-25; observed bus shapes unchanged), feature-detect payload fields, fail soft, and **gate v1 on the
+  (R-01). Mitigation: pin to OMP 19.2.1 (19.0.1 → 19.1.1 OI-1 → 19.2.1 OI-4, owner decisions 2026-11-25; observed bus shapes unchanged), feature-detect payload fields, fail soft, and **gate v1 on the
   Phase 0 probe**. Documented fallback: artifact-tree JSONL polling + `omp render` (less live).
 - **v2 implication:** true interactive control (steer/follow-up/revive/cancel from Herdr) likely needs
   an upstream OMP control API or an extension control surface; v1 reserves protocol space but does not
@@ -57,5 +57,5 @@ option 4 is the only local-only seam that preserves ownership.
 ## Empirical confirmation (2026-11-20)
 
 Phase 0 (`../analysis/phase-0-probe-report.md`) confirmed the chosen seam's load-bearing assumption on
-OMP 19.0.1 (the version installed at probe time — the pin later moved to 19.1.1 per OI-1): `pi.events.on` receives `task:subagent:*` with full roster + transcript payloads. Decision
+OMP 19.0.1 (the version installed at probe time — the pin later moved to 19.1.1 per OI-1, then 19.2.1 per OI-4): `pi.events.on` receives `task:subagent:*` with full roster + transcript payloads. Decision
 stands; R-01 cleared (print-mode observed; TUI confirmation tracked in P2).

@@ -6,7 +6,7 @@
 
 **Architecture:** P6 adds no features. It is a verification surface (`tests/guards/`, `tests/e2e/`, `scripts/`) plus the one bug fix required to make a gate green (`stopLens` bound to `session_shutdown`). Most safety machinery already exists (runtime transport denylist `src/herdr/guards.ts`, topology subscribe-before-create + `onEventsLost` reconcile, bridge `control.*` rejection, viewer historical rendering); P6 proves each with a tamper test and assembles the evidence.
 
-**Tech Stack:** TypeScript, Bun (`bun:test`, `Bun.spawn`), Biome, tsc; Herdr CLI (`herdr`) for the isolated-session E2E; OMP 19.1.1 / Herdr 0.9.5 pinned (re-pinned to 19.1.1 per owner OI-1 decision 2026-11-25; observed bus shapes unchanged from the 19.0.1 Phase-0 probe).
+**Tech Stack:** TypeScript, Bun (`bun:test`, `Bun.spawn`), Biome, tsc; Herdr CLI (`herdr`) for the isolated-session E2E; OMP 19.2.1 / Herdr 0.9.5 pinned (19.0.1 → 19.1.1 OI-1 → 19.2.1 OI-4, owner decisions 2026-11-25; observed bus shapes unchanged from the 19.0.1 Phase-0 probe).
 
 **Spec:** `docs/plans/specs/phase-06-hardening-spec.md` (P6-R1..R11). Requirement IDs: SDD `docs/superpowers/specs/2026-11-19-herdr-omp-lens-design.md` §5 (FR-01..15), §6 (NFR-01..06). Verified facts: `docs/analysis/phase-0-probe-report.md`.
 
@@ -18,7 +18,7 @@
 - Deterministic verification, not wall-clock: ≥50k-frame volume run with flat-heap/bounded-line assertions replaces any ≥10-min soak (P6-R8, D5/F-18).
 - Evidence report at `docs/analysis/dod-v1-report.md`, generated markdown table, checked in; a row per FR-01..15 + NFR-01..06 with `pass | fail | manual-evidence`; every manual row names its capture (P6-R1, RC-8).
 - Owner sign-off is recorded by the OWNER, never the agent (P6-R11).
-- License MIT (Q-02 closed); pinned OMP 19.1.1 / Herdr 0.9.5 (OI-1 resolved 2026-11-25: owner approved the re-pin; the version-drift→owner-decision rule was honored, no silent re-pin).
+- License MIT (Q-02 closed); pinned OMP 19.2.1 / Herdr 0.9.5 (OI-1 + OI-4 resolved 2026-11-25: owner approved both re-pins; the version-drift→owner-decision rule was honored, no silent re-pin).
 - Verify commands: `bun test`, `bun run typecheck`, `bun run lint`.
 
 ## Review Focus
@@ -163,7 +163,7 @@
 
 **Interfaces:**
 - Consumes: `resolveViewerCommand()` (resolves against installed package root, never session cwd), `omp plugin link`/`install`.
-- Produces: clean-profile run documented with version strings (OMP 19.1.1 / Herdr 0.9.5 — the re-pinned spec versions; the run itself recorded `omp/19.1.1` installed) and a NON-repo cwd; first delegation opens the view from that arbitrary cwd; a simulated missing-channel run produces `notice` + fallback, not a throw (P6-R9).
+- Produces: clean-profile run documented with version strings (OMP 19.2.1 / Herdr 0.9.5 — the re-pinned spec versions; the original run recorded `omp/19.1.1` installed, OI-4 re-pin 2026-11-25) and a NON-repo cwd; first delegation opens the view from that arbitrary cwd; a simulated missing-channel run produces `notice` + fallback, not a throw (P6-R9).
 
 - [ ] **Step 1: Clean-profile install** — install into a clean profile; from a non-repo cwd, launch omp in the isolated Herdr session, delegate, assert the view opens; record version strings + cwd.
 

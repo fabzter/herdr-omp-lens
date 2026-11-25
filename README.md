@@ -14,7 +14,7 @@ OMP stays the boss. It owns the workers and their results. This is just a window
 
 ## Status
 
-🪟 **v1 "The Window" is implemented.** 460 tests across 35 files are green; `tsc --noEmit` and
+🪟 **v1 "The Window" is implemented; v1.1 gives it OMP's own look.** 469 tests across 36 files are green; `tsc --noEmit` and
 `biome check` are clean. The evidence pack for the v1 Definition of Done lives in
 [`docs/analysis/dod-v1-report.md`](docs/analysis/dod-v1-report.md) and is **awaiting owner
 sign-off** — design, hardening and clean-profile install are complete, but the owner spot-witnesses
@@ -34,8 +34,11 @@ the live Herdr lifecycle steps listed in the report's open items before v1 is de
   even under concurrent spawn events.
 - **Worker split.** `/lens split <workerId>` pops that worker into a no-focus worker-scoped split.
   Closing the split never touches the worker.
-- **OMP-like detail.** Status, agent, model, age, usage counters when the bus exposes them, current
-  activity/tool, lineage, and a live transcript rendered with `omp render <sessionFile>`.
+- **OMP's own look, two columns (v1.1).** The roster is painted by OMP's own TUI component
+  (`@oh-my-pi/pi-tui`'s `agent` painter, pinned to the installed OMP version) on the left; the
+  selected worker's detail — status, agent, model, lineage, counters — and its live transcript
+  (`omp render <sessionFile>`) fill the right. No second OMP instance: same pane process, same
+  bridge. Narrow panes stack the columns; `LENS_PLAIN=1`/`--plain` restores the legacy text view.
 - **Finished collapse.** Completed workers are tucked into a collapsed section by default;
   `e` expands them.
 - **History that knows it's history.** After an OMP restart the saved transcripts are still there,
@@ -104,8 +107,9 @@ the full design.
 
 ## Requirements
 
-- **OMP 19.1.1** — the design pin (re-pinned from 19.0.1 per owner decision OI-1, 2026-11-25) and the
-  version every evidence run was produced on; spec and gate now agree. See
+- **OMP 19.2.1** — the design pin (19.0.1 → 19.1.1 per OI-1 → 19.2.1 per OI-4, owner decisions
+  2026-11-25), matching the installed binary; spec and gate agree. pi-tui/pi-wire are pinned to the
+  same 19.2.1 (the TUI library OMP embeds). See
   [`docs/analysis/clean-profile-install.md`](docs/analysis/clean-profile-install.md) §1.
 - **Herdr 0.9.5** (the version probed against).
 - macOS or Linux, [Bun](https://bun.sh) on `PATH` (the viewer runs under `bun`), and a Herdr-managed
@@ -113,24 +117,25 @@ the full design.
 
 ## Verified commands
 
-Every command below was executed on 2026-11-25 at commit `515d91dc` (OMP 19.1.1 / Herdr 0.9.5) and
-its output is quoted verbatim. Regenerate the evidence report with `bun scripts/gen-dod-report.ts`.
+Every command below was executed on 2026-11-25 at commit `c21b3cf` (OMP 19.2.1 / Herdr 0.9.5 — OI-4 re-pin) and
+its output is quoted verbatim; the install/plugin-list captures are from the earlier 19.1.1 run
+(version-stamped in the linked evidence doc). Regenerate the evidence report with `bun scripts/gen-dod-report.ts`.
 
 ```console
 $ bun test
- 460 pass
+ 469 pass
  0 fail
- 1658 expect() calls
-Ran 460 tests across 35 files. [3.93s]
+ 1706 expect() calls
+Ran 469 tests across 36 files. [3.72s]
 
 $ bun run typecheck          # tsc --noEmit — clean, no output
 
 $ bun run lint
 $ biome check src tests
-Checked 66 files in 52ms. No fixes applied.
+Checked 68 files in 22ms. No fixes applied.
 
 $ bun src/viewer/cli.ts      # no LENS_* env — usage error, exit 2, no connection
-usage: bun src/viewer/cli.ts [--worker <id>] (env: LENS_SOCKET_PATH, LENS_SESSION[, LENS_WORKER_ID])
+usage: bun src/viewer/cli.ts [--worker <id>] [--plain] (env: LENS_SOCKET_PATH, LENS_SESSION[, LENS_WORKER_ID])
 
 $ env -u HERDR_ENV -u HERDR_PANE_ID -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID \
       -u HERDR_SOCKET_PATH -u HERDR_BIN_PATH \
@@ -183,8 +188,9 @@ capture; none is a silent pass.
 6. **Herdr-restart restore is out of scope for v1.** A surviving *OMP* viewer tab is reused and
    rebound to the new bridge socket on restart; restoring the viewer layout after a *Herdr* server
    restart is a v2 horizon item.
-7. ~~Version drift~~ **Resolved (OI-1, 2026-11-25).** Evidence was collected on OMP **19.1.1 /
-   Herdr 0.9.5**; the owner approved re-pinning the spec from 19.0.1 to 19.1.1, so spec and gate agree.
+7. ~~Version drift~~ **Resolved (OI-1 + OI-4, 2026-11-25).** The owner approved re-pinning the spec
+   19.0.1 → 19.1.1 (OI-1), then → 19.2.1 (OI-4) when the installed binary upgraded; spec and gate
+   agree. Earlier evidence runs stay version-stamped (19.1.1 / Herdr 0.9.5).
 8. **Owner live-witness — partially resolved (OI-2, 2026-11-25).** Owner-witnessed Run D live-proved
    s1 and s2 (auto-open, close→reopen, no focus theft, U-HDR-1); s3 (`/lens split`), s4
    (restart→history) and s5 (cross-workspace focus) remain `manual-evidence` for env-coupled

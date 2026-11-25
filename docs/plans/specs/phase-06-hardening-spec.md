@@ -32,8 +32,8 @@ In scope:
 - **Fail-soft verification:** bridge/Herdr death, malformed frames, shape drift → OMP unaffected;
   degraded-mode artifact-dir discovery (D1), adapter timeouts + circuit-break (F-15).
 - **NFR evidence:** socket 0600, no network bind, ≤150 ms coalescing, bounded buffers.
-- **Clean-profile install** (`omp plugin link`) on the pinned versions (OMP 19.1.1 / Herdr 0.9.5 —
-  re-pinned from 19.0.1 per owner OI-1 decision 2026-11-25).
+- **Clean-profile install** (`omp plugin link`) on the pinned versions (OMP 19.2.1 / Herdr 0.9.5 —
+  19.0.1 → 19.1.1 OI-1 → 19.2.1 OI-4, owner decisions 2026-11-25).
 - **Docs reconcile** + **DoD-v1 evidence report** + owner sign-off walkthrough.
 
 Out of scope: any new feature or behavior change beyond a bug fix required to make a green gate go
@@ -120,7 +120,7 @@ upstream submission.
   frame-volume run (≥50k frames through encode/decode/roster/viewer) asserts flat heap and bounded
   line counts — no ≥10-minute soak — with numbers quoted in the evidence report.
 - **P6-R9 Version discipline & clean-profile install (NFR-02, FR-15, F-16).** On pinned OMP
-  19.1.1 / Herdr 0.9.5 (re-pinned per OI-1): `omp plugin link` (or `install`) into a clean profile loads the extension,
+  19.2.1 / Herdr 0.9.5 (re-pinned per OI-1 + OI-4): `omp plugin link` (or `install`) into a clean profile loads the extension,
   and first delegation opens the view **from an arbitrary working directory** —
   `resolveViewerCommand()` resolves against the installed package root, never the session cwd.
   Feature-detection degrades — never crashes — when a bus channel or Herdr command is absent.

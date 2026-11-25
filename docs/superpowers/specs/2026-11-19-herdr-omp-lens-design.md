@@ -3,7 +3,7 @@
 - Date: 2026-11-19
 - Status: **Design approved by owner; Phase 0 probe pending (R-01).**
 - Owner: Fabrizio Hernandez.
-- Versions targeted: OMP **19.1.1**, Herdr **0.9.5** (protocol 22) — re-pinned from OMP 19.0.1 per owner OI-1 decision 2026-11-25; observed bus shapes unchanged from the 19.0.1 Phase-0 probe.
+- Versions targeted: OMP **19.2.1**, Herdr **0.9.5** (protocol 22) — re-pinned 19.0.1 → 19.1.1 (OI-1) → 19.2.1 (OI-4), owner decisions 2026-11-25; observed bus shapes unchanged from the 19.0.1 Phase-0 probe.
 - Companion docs: `../../analysis/research-seams.md` (evidence), `../../adr/0001-observation-seam.md`
   (seam decision), `../../plans/00-master-plan.md` (long horizon, phases, DoD).
 
@@ -133,7 +133,7 @@ Components (one responsibility each):
 
 - **NFR-01 Local-only.** No network relay; bridge is a local unix socket (0600). No secrets beyond what
   the OMP view itself shows are emitted.
-- **NFR-02 Version discipline.** Pin to OMP 19.1.1 / Herdr 0.9.5 (re-pinned from 19.0.1 per OI-1, 2026-11-25); feature-detect undocumented surfaces;
+- **NFR-02 Version discipline.** Pin to OMP 19.2.1 / Herdr 0.9.5 (19.0.1 → 19.1.1 OI-1 → 19.2.1 OI-4, 2026-11-25); feature-detect undocumented surfaces;
   fail soft rather than crash on shape drift.
 - **NFR-03 Performance.** Coalesce progress (native ≤150ms); bounded bridge buffers; viewer tailing must
   not grow unbounded (rotate/snapshot).

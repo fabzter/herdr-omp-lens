@@ -1,7 +1,8 @@
 /**
  * P6-R5 / U-OMP-5 shutdown guard: OMP emits `session_shutdown` when the
  * owning session ends (verified in the installed 19.1.1 binary alongside
- * `session_start`). The lens MUST bind `stopLens` there — topology +
+ * `session_start`; spec since re-pinned to 19.2.1 per OI-4 — binding unchanged).
+ * The lens MUST bind `stopLens` there — topology +
  * observation + bridge (socket unlink) are torn down by the session that
  * opened them, not by process-exit luck.
  *

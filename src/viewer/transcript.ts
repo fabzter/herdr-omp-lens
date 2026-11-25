@@ -6,7 +6,7 @@
  * Phase 0 probe report; `omp read <id>` over the session registry needs the
  * owning live session and is NEVER used here (RC-15).
  *
- * `omp render` has no thinking flag (omp 19.1.1): thinking blocks are only
+ * `omp render` has no thinking flag (omp 19.2.1, re-verified 2026-11-25): thinking blocks are only
  * visually distinct via ANSI colour, which `--plain` strips to
  * indistinguishable text. D4 default-hidden is therefore implemented as a
  * pre-filter: the session JSONL is copied to a temp file with every

@@ -1,4 +1,4 @@
-# herdr-omp-lens — architecture notes (v1, shipped)
+# herdr-omp-lens — architecture notes (v1 + v1.1, shipped)
 
 This document describes the **shipped** v1 architecture: an in-process OMP extension that observes
 the native `task` subagents of the current session and publishes them over a local-only bridge to a
@@ -30,6 +30,8 @@ OMP interactive session (the agent that owns the workers)
        cli           env/argv resolution, keymap, main loop
        client        connects, handshakes, applies hello + deltas (never writes after the handshake)
        state/render  roster + collapsed finished section + history (not-live) + degraded/offline banners
+       tui           v1.1 two-column OMP-look screen: pi-tui `agent` painter roster (left) + inspector/transcript (right);
+                     exact-version pin to the installed OMP; stacks <100 cols; LENS_PLAIN/--plain → legacy render
        transcript    `omp render <sessionFile> --plain` via a filtered temp copy (thinking hidden by default)
 ```
 
@@ -48,7 +50,10 @@ OMP interactive session (the agent that owns the workers)
    `tab.create`, opens exactly one `--no-focus` `OMP subagents` tab, and runs the viewer in its root
    pane with `env = {LENS_SOCKET_PATH, LENS_SESSION, [LENS_WORKER_ID]}`. `LENS_SOCKET_PATH` is the
    *bridge* socket, never the caller's `HERDR_SOCKET_PATH`.
-5. **Render.** The viewer paints roster, inspector, and the selected worker's transcript. Terminal
+5. **Render.** The viewer paints roster, inspector, and the selected worker's transcript. On a TTY
+   (v1.1) it renders OMP's own look through `@oh-my-pi/pi-tui`'s `agent` painter — two columns
+   (roster left, detail right), stacked under 100 columns; a dynamic import falls back to the plain
+   single-column renderer when pi-tui is absent or `LENS_PLAIN=1`/`--plain` is set. Terminal
    workers collapse into a finished section; historical entries carry a *not-live* badge. The only
    bytes the viewer ever sends are its handshake.
 
