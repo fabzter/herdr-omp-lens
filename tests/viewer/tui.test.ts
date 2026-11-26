@@ -59,7 +59,7 @@ describe("renderTuiScreen — two-column layout", () => {
 		const lines = renderTuiScreen(s, { width: 140 }).split("\n");
 		const sep = lines.filter((l) => l.includes("│"));
 		expect(sep.length).toBeGreaterThan(0);
-		const detailRow = sep.find((l) => plain(l).includes("worker: bravo"));
+		const detailRow = sep.find((l) => /worker\s+bravo/.test(plain(l)));
 		expect(detailRow).toBeDefined();
 	});
 
@@ -68,7 +68,7 @@ describe("renderTuiScreen — two-column layout", () => {
 			selectedId: "b",
 		});
 		const lines = renderTuiScreen(s, { width: 140 }).split("\n");
-		const row = lines.find((l) => plain(l).includes("bravo") && l.startsWith(">"));
+		const row = lines.find((l) => plain(l).includes("bravo") && plain(l).startsWith("❯"));
 		expect(row).toBeDefined();
 	});
 
@@ -78,7 +78,7 @@ describe("renderTuiScreen — two-column layout", () => {
 		expect(lines.every((l) => !l.includes("│"))).toBe(true);
 		const text = plain(lines.join("\n"));
 		expect(text).toContain("workers (1):");
-		expect(text).toContain("worker: alpha");
+		expect(/worker\s+alpha/.test(text)).toBe(true);
 	});
 });
 
@@ -141,7 +141,43 @@ describe("renderTuiScreen — v1.2 persistent panes (owner UX decision 2026-11-2
 	test("retained finished row keeps the two-column detail after reaping (selection survives)", () => {
 		const s = stateWith([snap("a", { name: "alpha", status: "completed" })], { selectedId: "a" });
 		const lines = renderTuiScreen(s, { width: 140 }).split("\n");
-		const detailRow = lines.find((l) => l.includes("│") && plain(l).includes("worker: alpha"));
+		const detailRow = lines.find((l) => l.includes("│") && /worker\s+alpha/.test(plain(l)));
 		expect(detailRow).toBeDefined();
+	});
+});
+
+describe("renderTuiScreen — v1.3 polish (OMP-theme chrome, tokens stay grep-safe)", () => {
+	test("output carries OMP theme styling (SGR escapes) on header, sections, footer", () => {
+		const s = stateWith([snap("a", { name: "alpha" })], { selectedId: "a" });
+		const raw = renderTuiScreen(s, { width: 140 });
+		// biome-ignore lint/suspicious/noControlCharactersInRegex: detect SGR styling on purpose
+		expect(/\x1b\[/.test(raw)).toBe(true);
+		// header product name is bold; connection chip is colored
+		expect(raw).toContain("\x1b[1momp lens\x1b[22m");
+	});
+
+	test("machine tokens remain contiguous single runs after styling (pane-grep safe)", () => {
+		const s = stateWith([snap("a", { name: "alpha" }), snap("b", { status: "completed" })], {
+			selectedId: "a",
+		});
+		const raw = renderTuiScreen(s, { width: 140 });
+		// each token must appear verbatim in the RAW (styled) output, not split by escapes
+		expect(raw).toContain("workers (1):");
+		expect(raw).toContain("finished (1):");
+		expect(raw).toContain("[connected]");
+		expect(raw).toContain("j/k");
+		expect(raw.includes("scope: worker")).toBe(false); // not scoped here
+	});
+
+	test("scoped header token stays one contiguous styled run", () => {
+		const s = stateWith([snap("a")], { scope: { workerId: "a" } });
+		const raw = renderTuiScreen(s, { width: 140 });
+		expect(raw).toContain("scope: worker a");
+	});
+
+	test("selection marker is the accent ❯ glyph, not the old ascii >", () => {
+		const s = stateWith([snap("a", { name: "alpha" })], { selectedId: "a" });
+		const lines = renderTuiScreen(s, { width: 140 }).split("\n").map(plain);
+		expect(lines.some((l) => l.startsWith("❯") && l.includes("alpha"))).toBe(true);
 	});
 });
