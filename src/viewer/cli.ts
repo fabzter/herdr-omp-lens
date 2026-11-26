@@ -88,7 +88,13 @@ export type KeyAction =
 	| "toggleFinished"
 	| "toggleThinking"
 	| "refresh"
-	| "quit";
+	| "quit"
+	| "txLineDown"
+	| "txLineUp"
+	| "txPageDown"
+	| "txPageUp"
+	| "txTop"
+	| "txBottom";
 
 /**
  * Static keyboard map (P3-R7 keyboard-map audit): navigation/toggles only.
@@ -106,6 +112,13 @@ const KEYMAP: Record<string, KeyAction> = {
 	r: "refresh",
 	q: "quit",
 	"\x03": "quit", // ctrl-c
+	// v1.6 transcript scroll (view-local; j/k/arrows still select agents)
+	J: "txLineDown",
+	K: "txLineUp",
+	"\x1b[6~": "txPageDown", // PageDown
+	"\x1b[5~": "txPageUp", // PageUp
+	g: "txTop",
+	G: "txBottom",
 };
 
 /** Declared universe of actions — every keyFor result must land here. */
@@ -117,6 +130,12 @@ export const READONLY_ACTIONS: Record<KeyAction, true> = {
 	toggleThinking: true,
 	refresh: true,
 	quit: true,
+	txLineDown: true,
+	txLineUp: true,
+	txPageDown: true,
+	txPageUp: true,
+	txTop: true,
+	txBottom: true,
 };
 
 export function keyFor(key: string): KeyAction {
@@ -143,10 +162,25 @@ export function handleKey(s: ViewerState, action: KeyAction): ViewerState {
 			return { ...s, finishedCollapsed: !s.finishedCollapsed };
 		case "toggleThinking":
 			return { ...s, thinkingVisible: !s.thinkingVisible };
+		case "txLineDown":
+			return { ...s, txScroll: Math.max(0, s.txScroll - 1) };
+		case "txLineUp":
+			return { ...s, txScroll: s.txScroll + 1 };
+		case "txPageDown":
+			return { ...s, txScroll: Math.max(0, s.txScroll - TX_PAGE) };
+		case "txPageUp":
+			return { ...s, txScroll: s.txScroll + TX_PAGE };
+		case "txTop":
+			return { ...s, txScroll: Number.MAX_SAFE_INTEGER }; // renderer clamps to content
+		case "txBottom":
+			return { ...s, txScroll: 0 };
 		default:
 			return s;
 	}
 }
+
+/** Lines per transcript page-step (PgUp/PgDn). */
+const TX_PAGE = 10;
 
 /**
  * Splits a raw stdin chunk into logical keys: CSI sequences count as one
@@ -218,6 +252,9 @@ function mergeUi(s: ViewerState, ui: ViewerState): ViewerState {
 		selectedId,
 		finishedCollapsed: ui.finishedCollapsed,
 		thinkingVisible: ui.thinkingVisible,
+		// v1.6: keep the transcript scroll offset across deltas; reset when the
+		// shown worker changes (a new transcript starts at live-follow).
+		txScroll: selectedId === ui.selectedId ? ui.txScroll : 0,
 	};
 }
 

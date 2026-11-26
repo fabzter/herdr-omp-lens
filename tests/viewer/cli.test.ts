@@ -97,9 +97,38 @@ describe("read-only keyboard map (P3-R7 accept: keyboard-map audit)", () => {
 	});
 
 	test("unmapped keys are none; there is no send/steer/stop binding", () => {
-		for (const key of ["s", "x", "c", "S", "!", "K", "\x1b[C", "\x1b[D"]) {
+		// K is bound since v1.6 (transcript scroll up) — still read-only.
+		for (const key of ["s", "x", "c", "S", "!", "\x1b[C", "\x1b[D"]) {
 			expect(keyFor(key)).toBe("none");
 		}
+	});
+
+	test("v1.6 transcript scroll keys are declared read-only actions", () => {
+		for (const key of ["J", "K", "\x1b[6~", "\x1b[5~", "g", "G"]) {
+			expect(READONLY_ACTIONS[keyFor(key)]).toBe(true);
+		}
+		expect(keyFor("J")).toBe("txLineDown");
+		expect(keyFor("K")).toBe("txLineUp");
+		expect(keyFor("g")).toBe("txTop");
+		expect(keyFor("G")).toBe("txBottom");
+	});
+
+	test("handleKey scroll: line/page steps clamp at 0; G returns to follow; g tops", () => {
+		let s = initialViewerState({ selectedId: "a" });
+		s = handleKey(s, "txLineUp");
+		expect(s.txScroll).toBe(1);
+		s = handleKey(s, "txPageUp");
+		expect(s.txScroll).toBe(11);
+		s = handleKey(s, "txPageDown");
+		expect(s.txScroll).toBe(1);
+		s = handleKey(s, "txLineDown");
+		expect(s.txScroll).toBe(0);
+		s = handleKey(s, "txLineDown");
+		expect(s.txScroll).toBe(0); // clamp: never negative
+		s = handleKey(s, "txTop");
+		expect(s.txScroll).toBeGreaterThan(1000); // renderer clamps to content
+		s = handleKey(s, "txBottom");
+		expect(s.txScroll).toBe(0);
 	});
 
 	test("handleKey is pure: j/k move selection, e toggles collapse, t toggles thinking", () => {

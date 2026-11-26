@@ -43,6 +43,9 @@ export interface ViewerState {
 	/** Default false since v1.2 (owner UX decision 2026-11-25, FR-08 amended):
 	 * finished workers stay visible like OMP's hub; `e` collapses on demand. */
 	finishedCollapsed: boolean;
+	/** v1.6: transcript lines scrolled back from the tail; 0 = live-follow.
+	 * View-local (never sent anywhere); reset on worker change. */
+	txScroll: number;
 	/** Default false — viewer-local toggle (D4); never fetched from OMP. */
 	thinkingVisible: boolean;
 	selectedId?: string;
@@ -73,6 +76,7 @@ export function initialViewerState(init?: Partial<ViewerState>): ViewerState {
 	return {
 		workers: new Map(),
 		finishedCollapsed: false,
+		txScroll: 0,
 		thinkingVisible: false,
 		degraded: false,
 		notices: [],
