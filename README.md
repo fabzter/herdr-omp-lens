@@ -52,7 +52,8 @@ the live Herdr lifecycle steps listed in the report's open items before v1 is de
 Keyboard, read-only by construction: `j`/`k` or `↑`/`↓` select an agent; `J`/`K` scroll its
 transcript down/up (`PgDn`/`PgUp` page, `g` top, `G` back to live-follow); `e`/`Enter`/`Space`
 toggle the finished section, `t` toggles thinking display (hidden by default), `r` refreshes,
-`q`/`Ctrl-C` quits. There is no key that sends anything to a worker.
+`q`/`Ctrl-C` quits. The **mouse wheel** scrolls the transcript too (Herdr forwards it when the
+viewer has mouse reporting on). There is no key that sends anything to a worker.
 
 ## Install
 
