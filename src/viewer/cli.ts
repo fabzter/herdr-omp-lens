@@ -139,6 +139,15 @@ export const READONLY_ACTIONS: Record<KeyAction, true> = {
 };
 
 export function keyFor(key: string): KeyAction {
+	// v1.7 mouse wheel (SGR 1006): button 64 = wheel up, 65 = wheel down.
+	// Herdr forwards these to panes that enable mouse reporting; they scroll
+	// the transcript exactly like K/J — view-local, never an outbound frame.
+	if (key.startsWith("\x1b[<")) {
+		const button = key.slice(3).split(";")[0];
+		if (button === "64") return "txLineUp";
+		if (button === "65") return "txLineDown";
+		return "none";
+	}
 	return KEYMAP[key] ?? "none";
 }
 
@@ -190,8 +199,17 @@ export function splitKeys(chunk: string): string[] {
 	const keys: string[] = [];
 	for (let i = 0; i < chunk.length; i += 1) {
 		if (chunk[i] === "\x1b" && chunk[i + 1] === "[" && chunk[i + 2] !== undefined) {
-			keys.push(chunk.slice(i, i + 3));
-			i += 2;
+			// Full CSI: params/intermediates then a final byte @-~. Mouse reports
+			// (SGR `\x1b[<0;34;12M`) are longer than 3 chars — truncating them
+			// would spray garbage keys into the map.
+			let j = i + 2;
+			while (j < chunk.length) {
+				const c = chunk.charCodeAt(j);
+				if (c >= 0x40 && c <= 0x7e) break;
+				j += 1;
+			}
+			keys.push(chunk.slice(i, Math.min(j + 1, chunk.length)));
+			i = j;
 			continue;
 		}
 		const k = chunk[i];
@@ -464,7 +482,9 @@ export async function runViewer(deps: RunViewerDeps): Promise<number> {
 	const tty = process.stdout.isTTY === true;
 	const onResize = (): void => paint();
 	if (tty) {
-		deps.out.write("\x1b[?1049h\x1b[?25l");
+		// ?1000h: button press/release; ?1006h: SGR encoding. Wheel events
+		// (64/65) arrive as CSI and scroll the transcript (v1.7).
+		deps.out.write("\x1b[?1049h\x1b[?25l\x1b[?1000h\x1b[?1006h");
 		process.stdout.on("resize", onResize);
 		paint();
 	}
@@ -491,7 +511,7 @@ export async function runViewer(deps: RunViewerDeps): Promise<number> {
 	}
 	if (tty) {
 		process.stdout.off("resize", onResize);
-		deps.out.write("\x1b[?25h\x1b[?1049l");
+		deps.out.write("\x1b[?1000l\x1b[?1006l\x1b[?25h\x1b[?1049l");
 	}
 	await client.close();
 	return 0;

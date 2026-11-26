@@ -13,6 +13,7 @@ import {
 	type RunViewerDeps,
 	resolveViewerConfig,
 	runViewer,
+	splitKeys,
 	viewerEnv,
 } from "../../src/viewer/cli";
 import { initialViewerState } from "../../src/viewer/state";
@@ -166,6 +167,20 @@ describe("read-only keyboard map (P3-R7 accept: keyboard-map audit)", () => {
 		s = handleKey(s, "toggleFinished"); // collapse on demand
 		s = handleKey(s, "selectNext");
 		expect(s.selectedId).toBe("live-1"); // collapsed section skipped
+	});
+
+	test("v1.7 SGR mouse wheel maps to transcript scroll; other buttons are none", () => {
+		expect(keyFor("\x1b[<64;34;12M")).toBe("txLineUp");
+		expect(keyFor("\x1b[<65;34;12M")).toBe("txLineDown");
+		expect(keyFor("\x1b[<64;34;12m")).toBe("txLineUp"); // release form
+		expect(keyFor("\x1b[<0;34;12M")).toBe("none"); // left click — no binding
+		expect(keyFor("\x1b[<66;34;12M")).toBe("none"); // horizontal wheel — not bound
+		expect(READONLY_ACTIONS[keyFor("\x1b[<64;1;1M")]).toBe(true);
+	});
+
+	test("splitKeys keeps full CSI sequences intact (mouse reports are >3 chars)", () => {
+		const chunk = "j\x1b[<65;34;12Mk\x1b[B";
+		expect(splitKeys(chunk)).toEqual(["j", "\x1b[<65;34;12M", "k", "\x1b[B"]);
 	});
 
 	test("quit is not a state mutation", () => {
