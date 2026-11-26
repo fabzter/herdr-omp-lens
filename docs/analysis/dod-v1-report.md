@@ -3,11 +3,11 @@
 > GENERATED FILE — do not edit. Regenerate with `bun scripts/gen-dod-report.ts`.
 > Owner sign-off (P6-R11): **UNSIGNED — the owner signs, the agent only prepares.** See §Sign-off.
 
-- Generated: 2026-11-26 · commit `77daebc` · Bun 1.3.14
+- Generated: 2026-11-26 · commit `200e9ec` · Bun 1.3.14
 - Environment: OMP **19.2.1** (installed == spec pin **19.2.1** — OI-1 + OI-4 resolved 2026-11-25: 19.0.1 → 19.1.1 → 19.2.1) · Herdr **0.9.5** (probed live: `omp --version` / `herdr --version`)
-- Test gate: `bun test` → **474 pass / 0 fail** (161 suites, 1723 assertions)
-- Static gates: `bun run typecheck` clean · `bun run lint` clean (Checked 68 files in 21ms. No fixes applied.)
-- Suite summary: `Ran 474 tests across 36 files. [3.78s]`
+- Test gate: `bun test` → **485 pass / 0 fail** (164 suites, 1751 assertions)
+- Static gates: `bun run typecheck` clean · `bun run lint` clean (Checked 68 files in 58ms. No fixes applied.)
+- Suite summary: `Ran 485 tests across 36 files. [3.75s]`
 
 ## Requirement matrix
 
@@ -78,29 +78,29 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 
 ### FR-04 — Overview tab — one no-focus `OMP subagents` tab on first spawn · status: pass
 
-- `tests/extension/topology.test.ts :: "first spawn opens one no-focus overview tab and runs the viewer (P4-R2)" (line 171, pass)`
-- `tests/extension/topology.test.ts :: "single-flight: parallel spawns create exactly one tab (P4-R4)" (line 187, pass)`
-- `tests/extension/topology.test.ts :: "subscribes lifecycle before the first createOverviewTab (P4-R1)" (line 161, pass)`
+- `tests/extension/topology.test.ts :: "first spawn opens one no-focus overview tab and runs the viewer (P4-R2)" (line 182, pass)`
+- `tests/extension/topology.test.ts :: "single-flight: parallel spawns create exactly one tab (P4-R4)" (line 200, pass)`
+- `tests/extension/topology.test.ts :: "subscribes lifecycle before the first createOverviewTab (P4-R1)" (line 172, pass)`
 - `tests/extension/topology-herdr.test.ts :: "runInPane sends the short viewer command verbatim into the root pane" (line 229, pass)`
-- `tests/extension/topology.test.ts :: "onHistoryPresent auto-opens the overview with no spawn (D2)" (line 234, pass)`
+- `tests/extension/topology.test.ts :: "onHistoryPresent auto-opens the overview with no spawn (D2)" (line 247, pass)`
 
 - manual: docs/analysis/phase-0-caveat-closure.md §Caveat 1 — witnessed session 01a210e2-5995-74b7-99d0-1acf4182b855 — overview tab auto-opened on the history/spawn signal
 - manual: docs/analysis/clean-profile-install.md §3 — clean-profile run — tab `w11:t2 "OMP subagents"` (pane `w11:p2`), focus stayed `wN`
 
 ### FR-05 — Reopen after close — next spawn reopens exactly one tab · status: pass
 
-- `tests/extension/topology.test.ts :: "manual close is respected; next spawn reopens exactly once (P4-R3)" (line 243, pass)`
-- `tests/extension/topology.test.ts :: "final F2: overview pane.exited marks the view dead; next spawn relaunches in the same pane" (line 515, pass)`
-- `tests/extension/topology.test.ts :: "F2: a split moved out of the tab does not block tab.closed confirm (FR-05)" (line 468, pass)`
-- `tests/extension/topology.test.ts :: "tab.closed while pane still present in snapshot does NOT mark closed (moved race)" (line 269, pass)`
+- `tests/extension/topology.test.ts :: "manual close is respected; next spawn reopens exactly once (P4-R3)" (line 256, pass)`
+- `tests/extension/topology.test.ts :: "final F2: overview pane.exited marks the view dead; next spawn relaunches in the same pane" (line 530, pass)`
+- `tests/extension/topology.test.ts :: "F2: a split moved out of the tab does not block tab.closed confirm (FR-05)" (line 483, pass)`
+- `tests/extension/topology.test.ts :: "tab.closed while pane still present in snapshot does NOT mark closed (moved race)" (line 282, pass)`
 
 - manual: docs/analysis/e2e-evidence.md §Run D — E2E step s2 (close → next spawn → exactly one tab w17:t3, FR-14 worker survives) — LIVE-WITNESSED in Run D 2026-11-25 (owner-witnessed, w17)
 
 ### FR-06 — Optional split — no-focus worker-scoped split, close ≠ cancel · status: manual-evidence
 
-- `tests/extension/topology.test.ts :: "openWorkerSplit creates a no-focus worker-scoped split (P4-R7)" (line 346, pass)`
-- `tests/extension/topology.test.ts :: "one split per worker: repeat call returns the live pane (Q-P4-3)" (line 364, pass)`
-- `tests/extension/topology.test.ts :: "closing a split emits topology, never worker.removed (P4-R8/FR-14)" (line 389, pass)`
+- `tests/extension/topology.test.ts :: "openWorkerSplit creates a no-focus worker-scoped split (P4-R7)" (line 359, pass)`
+- `tests/extension/topology.test.ts :: "one split per worker: repeat call returns the live pane (Q-P4-3)" (line 379, pass)`
+- `tests/extension/topology.test.ts :: "closing a split emits topology, never worker.removed (P4-R8/FR-14)" (line 404, pass)`
 - `tests/extension/lens-commands.test.ts :: "/lens split <id> dispatches through the lens handler to openWorkerSplit" (line 325, pass)`
 - `tests/extension/lens-commands.test.ts :: "/lens split without an id does nothing" (line 335, pass)`
 - `tests/viewer/cli.test.ts :: "worker-scoped launch filters the screen to the scoped id only" (line 357, pass)`
@@ -158,7 +158,7 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 - `tests/guards/fail-soft.test.ts :: "adapter death mid-transition: turn completes, one notice, roster intact" (line 759, pass)`
 - `tests/guards/fail-soft.test.ts :: "circuit-break: adapter over a stalled socket degrades the topology with one notice" (line 633, pass)`
 - `tests/guards/invariants.test.ts :: "(f) FR-12: handlers never throw when bridge + Herdr are dead" (line 486, pass)`
-- `tests/extension/topology.test.ts :: "adapter failure degrades + notice, spawn signals still flow (P4-R11)" (line 416, pass)`
+- `tests/extension/topology.test.ts :: "adapter failure degrades + notice, spawn signals still flow (P4-R11)" (line 431, pass)`
 - `tests/viewer/render.test.ts :: "degraded and offline states are surfaced (FR-12, D1)" (line 170, pass)`
 
 - manual: tests/guards/sabotage.md §(f) — sabotage red — an unguarded notice subscriber throws "dead bridge" into the handler
@@ -166,7 +166,7 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 ### FR-13 — No focus theft — every topology op is no-focus · status: pass
 
 - `tests/guards/invariants.test.ts :: "(c) FR-13: every adapter create/split/run is no-focus; guard still throws" (line 388, pass)`
-- `tests/extension/topology-herdr.test.ts :: "no-focus surface: topology never emits focus/ forbidden calls (P4-R5/R6 tamper)" (line 240, pass)`
+- `tests/extension/topology-herdr.test.ts :: "no-focus surface: topology never emits focus/ forbidden calls (P4-R5/R6 tamper)" (line 242, pass)`
 - `tests/herdr/adapter.test.ts :: "sends tab.create with workspace_id, label, focus:false and env passthrough" (line 69, pass)`
 - `tests/herdr/guards.test.ts :: "tab.create with focus:true throws (focus theft)" (line 29, pass)`
 - `tests/herdr/adapter.test.ts :: "sends pane.split with target_pane_id, direction, focus:false, env passthrough" (line 111, pass)`
@@ -178,8 +178,8 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 
 - `tests/guards/invariants.test.ts :: "(a) FR-14: closing the overview and a split never removes the worker" (line 298, pass)`
 - `tests/guards/invariants.test.ts :: "(b) FR-14: open/split/close/reopen never spawns a duplicate worker" (line 338, pass)`
-- `tests/extension/topology.test.ts :: "onWorkerFinished drops the split binding only — never worker effects (P4-R8)" (line 375, pass)`
-- `tests/extension/topology.test.ts :: "closing a split emits topology, never worker.removed (P4-R8/FR-14)" (line 389, pass)`
+- `tests/extension/topology.test.ts :: "onWorkerFinished drops the split binding only — never worker effects (P4-R8)" (line 390, pass)`
+- `tests/extension/topology.test.ts :: "closing a split emits topology, never worker.removed (P4-R8/FR-14)" (line 404, pass)`
 
 - manual: tests/guards/sabotage.md §(a)/§(b) — sabotage red — split-close → worker.removed and view-op re-spawn both fail the suite
 
@@ -188,7 +188,7 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 - `tests/extension/resolve.test.ts :: "returns a runnable `bun <abs path to src/viewer/cli.ts>` invocation" (line 10, pass)`
 - `tests/extension/resolve.test.ts :: "is independent of process.cwd()" (line 22, pass)`
 - `tests/viewer/cli.test.ts :: "resolveViewerCommand resolves to the real cli.ts behind a runnable `bun` word" (line 84, pass)`
-- `tests/extension/topology-herdr.test.ts :: "the production viewer command word is a runnable `bun <cli.ts>` invocation" (line 472, pass)`
+- `tests/extension/topology-herdr.test.ts :: "the production viewer command word is a runnable `bun <cli.ts>` invocation" (line 474, pass)`
 
 - manual: docs/analysis/clean-profile-install.md §2–§3 — clean-profile `p6t7-clean` link + live delegation from `/private/tmp/p6t7-scratch`: viewer `[connected]`, argv rooted at installed package
 
@@ -227,7 +227,7 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 - `tests/guards/herdr-source-scan.test.ts :: "a guards.ts missing denylist entries is flagged (requireDenylist)" (line 207, pass)`
 - `tests/herdr/guards.test.ts :: "String.fromCharCode composition cannot evade the denylist" (line 86, pass)`
 - `tests/herdr/guards.test.ts :: "computed params keys cannot smuggle focus or tab_id" (line 91, pass)`
-- `tests/extension/topology.test.ts :: "owned panes are reported with source, never as an agent (P4-R13)" (line 221, pass)`
+- `tests/extension/topology.test.ts :: "owned panes are reported with source, never as an agent (P4-R13)" (line 234, pass)`
 - `tests/viewer/cli.test.ts :: "no viewer file calls any forbidden pane/agent API or imports the pane adapter" (line 159, pass)`
 - `tests/guards/invariants.test.ts :: "(g) F-15: every pi.on / pi.events.on / command handler is synchronous" (line 520, pass)`
 

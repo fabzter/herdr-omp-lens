@@ -24,6 +24,13 @@ export interface TabInfo {
 	label?: string;
 }
 
+/** One foreground process of a pane (pane.process_info), read-only. */
+export interface PaneProcess {
+	argv0: string;
+	name: string;
+	pid: number;
+}
+
 export interface SessionSnapshot {
 	workspaces: unknown[];
 	tabs: TabInfo[];

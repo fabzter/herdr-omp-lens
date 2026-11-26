@@ -103,7 +103,9 @@ Components (one responsibility each):
   no network interface is bound.
 - **FR-04 Overview tab.** On first spawn, create one tab labeled `OMP subagents` in
   `$HERDR_WORKSPACE_ID` with `--no-focus`, run the viewer in its root pane. *Accept:* tab exists, focus
-  unchanged, viewer rendering.
+  unchanged, viewer rendering. **Multi-session (v1.4, owner 2026-11-26):** one tab PER OMP session —
+  additional live sessions get a session-suffixed label; a session never adopts another live
+  session's tab (ownership via the viewer argv0 token + owner-pid liveness).
 - **FR-05 Reopen after close.** If the user closes the view, the **next** subtask reopens it; dedupe via
   authoritative read so concurrent events never double-create. *Accept:* close → next spawn → exactly
   one viewer tab.
