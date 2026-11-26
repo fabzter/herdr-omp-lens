@@ -3,7 +3,7 @@
 > GENERATED FILE — do not edit. Regenerate with `bun scripts/gen-dod-report.ts`.
 > Owner sign-off (P6-R11): **UNSIGNED — the owner signs, the agent only prepares.** See §Sign-off.
 
-- Generated: 2026-11-26 · commit `a994629` · Bun 1.3.14
+- Generated: 2026-11-26 · commit `9f7141c` · Bun 1.3.14
 - Environment: OMP **19.2.1** (installed == spec pin **19.2.1** — OI-1 + OI-4 resolved 2026-11-25: 19.0.1 → 19.1.1 → 19.2.1) · Herdr **0.9.5** (probed live: `omp --version` / `herdr --version`)
 - Test gate: `bun test` → **501 pass / 0 fail** (166 suites, 1832 assertions)
 - Static gates: `bun run typecheck` clean · `bun run lint` clean (Checked 68 files in 26ms. No fixes applied.)
