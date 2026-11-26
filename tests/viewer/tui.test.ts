@@ -217,3 +217,97 @@ describe("renderTuiScreen — v1.3 consistency (detail matches roster style)", (
 		expect(text.split("\n").filter((l) => l.includes("[read-only]")).length).toBe(0);
 	});
 });
+
+describe("renderTuiScreen — v1.5 fixed frame (footer locked, OMP text graphics)", () => {
+	function framed(
+		height: number,
+		width = 120,
+		over: Partial<import("../../src/viewer/state").ViewerState> = {},
+	) {
+		const s = stateWith(
+			[
+				snap("a", { name: "alpha", sessionFile: "/tmp/a.jsonl" }),
+				snap("b", { name: "bravo", status: "completed" }),
+				snap("c", { name: "ghost", historical: true }),
+			],
+			{ selectedId: "a", ...over },
+		);
+		return renderTuiScreen(s, { width, height });
+	}
+
+	test("frame is EXACTLY height rows; footer is always the last row", () => {
+		for (const h of [8, 12, 16, 24, 40]) {
+			const lines = framed(h).split("\n");
+			expect(lines.length).toBe(h);
+			expect(plain(lines.at(-1) ?? "")).toContain("q quit");
+			expect(plain(lines[0] ?? "")).toContain("omp lens — session sess-1 [connected]");
+		}
+	});
+
+	test("footer stays locked with long transcript content (tail-follow, no growth)", () => {
+		const s = stateWith([snap("a", { name: "alpha", sessionFile: "/tmp/a.jsonl" })], {
+			selectedId: "a",
+		});
+		const tx = Array.from({ length: 200 }, (_, i) => `line ${i}`).join("\n");
+		const lines = renderTuiScreen(s, {
+			width: 120,
+			height: 16,
+			transcript: { workerId: "a", text: tx },
+		}).split("\n");
+		expect(lines.length).toBe(16);
+		expect(plain(lines.at(-1) ?? "")).toContain("q quit");
+		const body = plain(lines.join("\n"));
+		expect(body).toContain("line 199"); // tail visible
+		expect(body).toContain("earlier lines"); // overflow indicator
+	});
+
+	test("T-junction rules align with the body divider; section headers carry disclosure glyphs", () => {
+		const lines = framed(16).split("\n").map(plain);
+		expect(lines[1]).toContain("┬");
+		expect(lines.at(-2)).toContain("┴");
+		const teeCol = (lines[1] ?? "").indexOf("┬");
+		const bodyDividerCol = (lines[2] ?? "").indexOf("│");
+		expect(teeCol).toBe(bodyDividerCol);
+		expect(lines.some((l) => l.startsWith("▾ workers (1):"))).toBe(true);
+		expect(lines.some((l) => l.startsWith("▾ finished (1):"))).toBe(true);
+		expect(lines.some((l) => l.startsWith("▾ history (1):"))).toBe(true);
+	});
+
+	test("machine tokens stay contiguous in the framed output (pane-grep safe)", () => {
+		const raw = framed(16);
+		expect(raw).toContain("workers (1):");
+		expect(raw).toContain("finished (1):");
+		expect(raw).toContain("history (1):");
+		expect(raw).toContain("[connected]");
+		expect(raw).toContain("omp lens");
+	});
+
+	test("selected row carries selectedBg tint; empty state keeps both columns + hint card", () => {
+		const raw = framed(16);
+		expect(raw).toContain("\x1b[48;2;"); // selectedBg present
+		const empty = renderTuiScreen(stateWith([]), { width: 120, height: 14 });
+		const el = empty.split("\n").map(plain);
+		expect(el.length).toBe(14);
+		expect(el.some((l) => l.includes("│") && l.includes("(no agents yet"))).toBe(true);
+		expect(el.some((l) => l.includes("╭"))).toBe(true); // hint card box
+		expect(plain(el.at(-1) ?? "")).toContain("q quit");
+	});
+
+	test("stacked narrow frame: no │ divider, full-width rules, footer locked", () => {
+		const s = stateWith([snap("a", { name: "alpha" })], { selectedId: "a" });
+		const lines = renderTuiScreen(s, { width: 60, height: 12 }).split("\n").map(plain);
+		expect(lines.length).toBe(12);
+		// body rows must not carry the two-column divider (scrollbar track excepted)
+		expect(lines.some((l) => l.includes("┬"))).toBe(false);
+		expect(plain(lines.at(-1) ?? "")).toContain("q quit");
+	});
+
+	test("roster overflow keeps the selected row visible with a scrollbar", () => {
+		const workers = Array.from({ length: 30 }, (_, i) => snap(`w${i}`, { name: `agent-${i}` }));
+		const s = stateWith(workers, { selectedId: "w29" });
+		const lines = renderTuiScreen(s, { width: 120, height: 12 }).split("\n").map(plain);
+		expect(lines.length).toBe(12);
+		expect(lines.some((l) => l.includes("agent-29"))).toBe(true); // selection windowed into view
+		expect(lines.some((l) => l.includes("█"))).toBe(true); // scrollbar thumb
+	});
+});

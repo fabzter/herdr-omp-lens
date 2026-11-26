@@ -290,8 +290,22 @@ export async function runViewer(deps: RunViewerDeps): Promise<number> {
 		const text =
 			tuiScreen === undefined
 				? renderScreen(ui, paintOpts)
-				: tuiScreen(ui, { ...paintOpts, width: process.stdout.columns ?? 80 });
-		deps.out.write(`${ANSI_RESET + text}\n`);
+				: tuiScreen(ui, {
+						...paintOpts,
+						width: process.stdout.columns ?? 80,
+						height: process.stdout.rows ?? 24,
+					});
+		if (process.stdout.isTTY === true) {
+			// Synchronized update + cursor-home + clear-to-EOL: no flicker, no
+			// trailing newline (a full-height frame + \n would scroll the pane).
+			const frame = `\x1b[?2026h\x1b[H${text
+				.split("\n")
+				.map((r) => `${r}\x1b[K`)
+				.join("\n")}\x1b[J\x1b[?2026l`;
+			deps.out.write(frame);
+		} else {
+			deps.out.write(`${ANSI_RESET + text}\n`);
+		}
 		deps.onPaint?.(text);
 	};
 
@@ -408,6 +422,16 @@ export async function runViewer(deps: RunViewerDeps): Promise<number> {
 	refreshTranscript(true);
 	paint();
 
+	// Full-viewport lifecycle (TTY only): alternate screen + hidden cursor,
+	// repaint on resize so the footer re-locks to the new bottom row.
+	const tty = process.stdout.isTTY === true;
+	const onResize = (): void => paint();
+	if (tty) {
+		deps.out.write("\x1b[?1049h\x1b[?25l");
+		process.stdout.on("resize", onResize);
+		paint();
+	}
+
 	const keys = deps.keys ?? stdinKeys();
 	for await (const chunk of keys) {
 		for (const k of splitKeys(chunk)) {
@@ -427,6 +451,10 @@ export async function runViewer(deps: RunViewerDeps): Promise<number> {
 			paint();
 		}
 		if (quit) break;
+	}
+	if (tty) {
+		process.stdout.off("resize", onResize);
+		deps.out.write("\x1b[?25h\x1b[?1049l");
 	}
 	await client.close();
 	return 0;
