@@ -19,9 +19,10 @@ import type { Theme } from "@oh-my-pi/pi-tui/theme/contract";
 import { loadThemeSync } from "@oh-my-pi/pi-tui/theme/loader";
 import "@oh-my-pi/pi-tui/term/painters/agent";
 import "@oh-my-pi/pi-tui/term/painters/kv";
+import { formatDuration } from "@oh-my-pi/pi-tui/term/painters/elapsed";
 import type { TspAgentProps, TspKvProps } from "@oh-my-pi/pi-wire/tsp";
 import type { WorkerSnapshot, WorkerStatus } from "../protocol/types";
-import { formatCounters, partition, type RenderScreenOptions } from "./render";
+import { partition, type RenderScreenOptions } from "./render";
 import type { ViewerState } from "./state";
 
 export interface TuiScreenOptions extends RenderScreenOptions {
@@ -111,11 +112,28 @@ function inspectorItems(w: WorkerSnapshot): TspKvProps["items"] {
 	if (w.activity !== undefined) items.push({ k: "activity", v: w.activity });
 	if (w.parentToolCallId !== undefined) items.push({ k: "parent call", v: w.parentToolCallId });
 	if (w.index !== undefined) items.push({ k: "index", v: String(w.index) });
-	items.push({ k: "updated", v: String(w.updatedAt) });
-	const counters = formatCounters(w.counters);
-	if (counters !== "") items.push({ k: "counters", v: counters });
+	items.push({
+		k: "updated",
+		v: new Date(w.updatedAt).toLocaleTimeString("en-GB", { hour12: false }),
+	});
+	const usage = usageFacts(w);
+	if (usage !== "") items.push({ k: "usage", v: usage });
 	if (w.sessionFile !== undefined) items.push({ k: "session", v: w.sessionFile });
 	return items;
+}
+
+/** Usage facts in the SAME style as the roster's agent-painter facts line. */
+function usageFacts(w: WorkerSnapshot): string {
+	const c = w.counters;
+	if (c === undefined) return "";
+	const out: string[] = [];
+	if (c.requests !== undefined) out.push(`${c.requests} req`);
+	if (c.tokens !== undefined)
+		out.push(`${c.tokens >= 1000 ? `${(c.tokens / 1000).toFixed(1)}k` : c.tokens} tok`);
+	if (c.cost !== undefined) out.push(`$${c.cost.toFixed(2)}`);
+	if (c.toolCount !== undefined) out.push(`${c.toolCount} tools`);
+	if (c.durationMs !== undefined) out.push(formatDuration(c.durationMs));
+	return out.join(" · ");
 }
 
 /** kv grid through OMP's own painter. */
@@ -214,6 +232,7 @@ function footerLine(s: ViewerState): string {
 	const key = (k: string) => t.fg("accent", k);
 	const dim = (x: string) => t.style("dim", x);
 	return [
+		dim("read-only"),
 		`${key("j/k")}${dim(" select")}`,
 		`${key("e")}${dim(" finished")}`,
 		`${key("t")}${dim(` thinking ${thinking}`)}`,

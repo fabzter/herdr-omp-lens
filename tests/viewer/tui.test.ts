@@ -181,3 +181,39 @@ describe("renderTuiScreen — v1.3 polish (OMP-theme chrome, tokens stay grep-sa
 		expect(lines.some((l) => l.startsWith("❯") && l.includes("alpha"))).toBe(true);
 	});
 });
+
+describe("renderTuiScreen — v1.3 consistency (detail matches roster style)", () => {
+	test("usage facts use the roster's style (N req · Nk tok · duration), not tok= counters", () => {
+		const s = stateWith(
+			[
+				snap("a", {
+					name: "alpha",
+					counters: { requests: 7, tokens: 30100, cost: 0.08, toolCount: 4, durationMs: 91000 },
+				}),
+			],
+			{ selectedId: "a" },
+		);
+		const text = plain(renderTuiScreen(s, { width: 140 }));
+		expect(text).toContain("7 req · 30.1k tok · $0.08 · 4 tools · 1m 31s");
+		expect(text).not.toContain("tok=30,100");
+	});
+
+	test("updated renders as a readable clock time, never a raw epoch", () => {
+		const s = stateWith([snap("a", { name: "alpha", updatedAt: 1_700_000_000_000 })], {
+			selectedId: "a",
+		});
+		const text = plain(renderTuiScreen(s, { width: 140 }));
+		expect(text).not.toContain("1700000000000");
+		expect(/updated\s+\d{2}:\d{2}:\d{2}/.test(text)).toBe(true);
+	});
+
+	test("read-only fact lives once in the footer, not as per-row badge noise", () => {
+		const s = stateWith([snap("a", { name: "alpha" }), snap("b", { name: "bravo" })], {
+			selectedId: "a",
+		});
+		const text = plain(renderTuiScreen(s, { width: 140 }));
+		const footer = text.split("\n").at(-1) ?? "";
+		expect(footer).toContain("read-only");
+		expect(text.split("\n").filter((l) => l.includes("[read-only]")).length).toBe(0);
+	});
+});
