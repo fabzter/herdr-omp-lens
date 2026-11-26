@@ -39,7 +39,9 @@ describe("renderTuiScreen — E2E token contract (unchanged from render.ts)", ()
 		expect(text).toContain("finished (1) — press e to expand");
 		expect(text).toContain("history (1):");
 		expect(text).toContain("[not-live]");
-		expect(text).toContain("j/k select · e finished · t thinking off · r refresh · q quit");
+		expect(text).toContain(
+			"j/k select · J/K scroll · e finished · t thinking off · r refresh · q quit",
+		);
 	});
 
 	test("scoped mode keeps `scope: worker <id>` and the not-found line", () => {
@@ -309,5 +311,80 @@ describe("renderTuiScreen — v1.5 fixed frame (footer locked, OMP text graphics
 		expect(lines.length).toBe(12);
 		expect(lines.some((l) => l.includes("agent-29"))).toBe(true); // selection windowed into view
 		expect(lines.some((l) => l.includes("█"))).toBe(true); // scrollbar thumb
+	});
+});
+
+describe("renderTuiScreen — v1.6 transcript scroll (view-local, read-only)", () => {
+	function longTx(n: number): string {
+		return Array.from({ length: n }, (_, i) => `line ${i}`).join("\n");
+	}
+	function withTx(scroll: number, height = 16) {
+		const s = stateWith([snap("a", { name: "alpha", sessionFile: "/tmp/a.jsonl" })], {
+			selectedId: "a",
+			txScroll: scroll,
+		});
+		return renderTuiScreen(s, {
+			width: 120,
+			height,
+			transcript: { workerId: "a", text: longTx(100) },
+		});
+	}
+
+	test("txScroll=0 tail-follows; scrolling up reveals earlier lines with ↓ indicator", () => {
+		const follow = plain(withTx(0));
+		expect(follow).toContain("line 99");
+		expect(follow).toContain("↑");
+		expect(follow).not.toContain("↓");
+		const up = plain(withTx(20));
+		expect(up).toContain("↓ 20 more lines");
+		expect(up).toContain("↑");
+		expect(up).not.toContain("line 99"); // tail no longer visible
+	});
+
+	test("g (MAX_SAFE_INTEGER) clamps to the top: line 0 visible, no ↑ indicator", () => {
+		const top = plain(withTx(Number.MAX_SAFE_INTEGER));
+		expect(top).toContain("line 0");
+		expect(top).not.toContain("earlier lines");
+		expect(top).toContain("more lines"); // content below
+	});
+
+	test("stale oversized offset clamps to content, never blanks the pane", () => {
+		const s = stateWith([snap("a", { name: "alpha", sessionFile: "/tmp/a.jsonl" })], {
+			selectedId: "a",
+			txScroll: 5000,
+		});
+		const out = plain(
+			renderTuiScreen(s, {
+				width: 120,
+				height: 16,
+				transcript: { workerId: "a", text: longTx(100) },
+			}),
+		);
+		expect(out).toContain("line 0");
+		expect(out.split("\n").length).toBe(16);
+	});
+
+	test("short transcript ignores scroll offset (nothing to scroll)", () => {
+		const s = stateWith([snap("a", { name: "alpha", sessionFile: "/tmp/a.jsonl" })], {
+			selectedId: "a",
+			txScroll: 50,
+		});
+		const out = plain(
+			renderTuiScreen(s, {
+				width: 120,
+				height: 24,
+				transcript: { workerId: "a", text: "only one line" },
+			}),
+		);
+		expect(out).toContain("only one line");
+		expect(out).not.toContain("earlier lines");
+		expect(out).not.toContain("more lines");
+	});
+
+	test("footer advertises J/K scroll; frame stays exactly height rows while scrolled", () => {
+		const raw = withTx(10);
+		expect(raw).toContain("J/K");
+		expect(raw.split("\n").length).toBe(16);
+		expect(plain(raw.split("\n").at(-1) ?? "")).toContain("q quit");
 	});
 });

@@ -389,6 +389,7 @@ function footerBar(
 	const dim = (x: string) => t.style("dim", x);
 	const hints = [
 		`${key("j/k")}${dim(" select")}`,
+		`${key("J/K")}${dim(" scroll")}`,
 		`${key("e")}${dim(" finished")}`,
 		`${key("t")}${dim(` thinking ${thinking}`)}`,
 		`${key("r")}${dim(" refresh")}`,
@@ -450,7 +451,31 @@ function clipRoster(sections: RosterSection[], bodyH: number, width: number): st
 	return out;
 }
 
-/** Clip detail to bodyH: kv pinned (≤45%), transcript tail-follows. */
+/**
+ * v1.6 transcript window: `txScroll` lines back from the tail (0 = live-follow).
+ * Overflow indicators in BOTH directions; the offset is clamped to the content
+ * so `g` (MAX_SAFE_INTEGER) lands at the top and stale offsets never blank out.
+ */
+function txWindow(t: Theme, body: string[], txH: number, txScroll: number): string[] {
+	if (body.length <= txH) return body;
+	// Window: at most two indicator rows (↑ above, ↓ below). Follow (0) shows
+	// only ↑; top shows only ↓; mid-scroll both. maxScroll reserves the ↓ row
+	// so `g` lands exactly on line 0.
+	const maxScroll = Math.max(0, body.length - txH + 1);
+	const scroll = Math.max(0, Math.min(txScroll, maxScroll));
+	const belowHidden = scroll;
+	const end = body.length - scroll;
+	const hasAbove = end > txH;
+	const rows = Math.max(1, txH - (hasAbove ? 1 : 0) - (belowHidden > 0 ? 1 : 0));
+	const start = Math.max(0, end - rows);
+	const out: string[] = [];
+	if (start > 0) out.push(t.style("dim", `↑ ${start} earlier lines`));
+	out.push(...body.slice(start, start + rows));
+	if (belowHidden > 0) out.push(t.style("dim", `↓ ${belowHidden} more lines`));
+	return out.slice(0, txH);
+}
+
+/** Clip detail to bodyH: kv pinned (≤45%), transcript windowed by txScroll. */
 function clipDetail(
 	parts: DetailParts | undefined,
 	s: ViewerState,
@@ -473,13 +498,7 @@ function clipDetail(
 	const txH = Math.max(1, bodyH - kv.length - spacer - 1);
 	const txBody = parts.transcript.slice(1); // rule row handled separately
 	const rule = parts.transcript[0] ?? "";
-	let tx: string[];
-	if (txBody.length <= txH) {
-		tx = txBody;
-	} else {
-		const hidden = txBody.length - (txH - 1);
-		tx = [t.style("dim", `↑ ${hidden} earlier lines`), ...txBody.slice(txBody.length - (txH - 1))];
-	}
+	const tx = txWindow(t, txBody, txH, s.txScroll);
 	const out = [...kv, ...(spacer ? [""] : []), rule, ...tx];
 	while (out.length < bodyH) out.push("");
 	return out.slice(0, bodyH);
@@ -620,6 +639,7 @@ export function renderTuiScreen(s: ViewerState, opts: TuiScreenOptions = {}): st
 	const foot = [
 		dim("read-only"),
 		`${key("j/k")}${dim(" select")}`,
+		`${key("J/K")}${dim(" scroll")}`,
 		`${key("e")}${dim(" finished")}`,
 		`${key("t")}${dim(` thinking ${thinking}`)}`,
 		`${key("r")}${dim(" refresh")}`,

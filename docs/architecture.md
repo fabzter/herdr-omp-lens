@@ -27,7 +27,7 @@ OMP interactive session (the agent that owns the workers)
   ├─ src/protocol/              versioned NDJSON codec (PROTOCOL_VERSION=1)
        types/codec  strict Zod shapes; client boundary accepts ONLY the viewer handshake (control.* rejected)
   └─ src/viewer/                read-only renderer, runs as an ordinary Herdr pane
-       cli           env/argv resolution, keymap, main loop
+       cli           env/argv resolution, keymap (select + view-local transcript scroll), main loop
        client        connects, handshakes, applies hello + deltas (never writes after the handshake)
        state/render  roster + persistent finished section (v1.2: retained after reap, ≤100) + history (not-live) + banners
        tui           v1.1 two-column OMP-look screen: pi-tui `agent` painter roster (left) + inspector/transcript (right);

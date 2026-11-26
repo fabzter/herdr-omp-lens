@@ -49,9 +49,10 @@ the live Herdr lifecycle steps listed in the report's open items before v1 is de
   notice and workers are discovered by scanning the verified session-artifact directory instead.
   If Herdr or the bridge dies mid-turn, your OMP turn completes normally.
 
-Keyboard, read-only by construction: `j`/`k` or `↑`/`↓` select, `e`/`Enter`/`Space` toggle the
-finished section, `t` toggles thinking display (hidden by default), `r` refreshes, `q`/`Ctrl-C`
-quits. There is no key that sends anything to a worker.
+Keyboard, read-only by construction: `j`/`k` or `↑`/`↓` select an agent; `J`/`K` scroll its
+transcript down/up (`PgDn`/`PgUp` page, `g` top, `G` back to live-follow); `e`/`Enter`/`Space`
+toggle the finished section, `t` toggles thinking display (hidden by default), `r` refreshes,
+`q`/`Ctrl-C` quits. There is no key that sends anything to a worker.
 
 ## Install
 
