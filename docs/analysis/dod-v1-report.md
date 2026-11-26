@@ -3,11 +3,11 @@
 > GENERATED FILE — do not edit. Regenerate with `bun scripts/gen-dod-report.ts`.
 > Owner sign-off (P6-R11): **UNSIGNED — the owner signs, the agent only prepares.** See §Sign-off.
 
-- Generated: 2026-11-26 · commit `200e9ec` · Bun 1.3.14
+- Generated: 2026-11-26 · commit `a994629` · Bun 1.3.14
 - Environment: OMP **19.2.1** (installed == spec pin **19.2.1** — OI-1 + OI-4 resolved 2026-11-25: 19.0.1 → 19.1.1 → 19.2.1) · Herdr **0.9.5** (probed live: `omp --version` / `herdr --version`)
-- Test gate: `bun test` → **485 pass / 0 fail** (164 suites, 1751 assertions)
-- Static gates: `bun run typecheck` clean · `bun run lint` clean (Checked 68 files in 58ms. No fixes applied.)
-- Suite summary: `Ran 485 tests across 36 files. [3.75s]`
+- Test gate: `bun test` → **501 pass / 0 fail** (166 suites, 1832 assertions)
+- Static gates: `bun run typecheck` clean · `bun run lint` clean (Checked 68 files in 26ms. No fixes applied.)
+- Suite summary: `Ran 501 tests across 36 files. [3.75s]`
 
 ## Requirement matrix
 
@@ -103,7 +103,7 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 - `tests/extension/topology.test.ts :: "closing a split emits topology, never worker.removed (P4-R8/FR-14)" (line 404, pass)`
 - `tests/extension/lens-commands.test.ts :: "/lens split <id> dispatches through the lens handler to openWorkerSplit" (line 325, pass)`
 - `tests/extension/lens-commands.test.ts :: "/lens split without an id does nothing" (line 335, pass)`
-- `tests/viewer/cli.test.ts :: "worker-scoped launch filters the screen to the scoped id only" (line 357, pass)`
+- `tests/viewer/cli.test.ts :: "worker-scoped launch filters the screen to the scoped id only" (line 401, pass)`
 
 - manual: docs/analysis/e2e-evidence.md §Manual-evidence steps — E2E step s3 (/lens split live) — STILL manual after owner-witnessed Runs D/E/E2 2026-11-25: Run D/E pane send-text JSON EOF flake (fixed: send-text → herdrProc, read retry); Run E2 uncovered the input-clear bug (/lens/lens split typed → submitted as prompt) — ctrl+u fix + scope-content detection landed, verified by live manual probe (w1A:t4 scoped pane rendered 'scope: worker alpha-responder [connected]'), full live witness still outstanding
 
@@ -121,8 +121,8 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 - `tests/viewer/render.test.ts :: "finished workers selectable by default (v1.2); hidden while collapsed on demand" (line 118, pass)`
 - `tests/viewer/state.test.ts :: "removed keeps a finished row visible with its terminal status; selection + ref survive (v1.2)" (line 144, pass)`
 - `tests/viewer/state.test.ts :: "retention is bounded: oldest non-live rows evicted past 100; live rows never evicted (v1.2, NFR-03)" (line 168, pass)`
-- `tests/viewer/cli.test.ts :: "navigation includes finished by default (v1.2); collapsing hides them from selection" (line 125, pass)`
-- `tests/viewer/tui.test.ts :: "zero workers still renders BOTH columns with the empty-state hint" (line 123, pass)`
+- `tests/viewer/cli.test.ts :: "navigation includes finished by default (v1.2); collapsing hides them from selection" (line 155, pass)`
+- `tests/viewer/tui.test.ts :: "zero workers still renders BOTH columns with the empty-state hint" (line 125, pass)`
 
 ### FR-09 — History — persisted transcripts after restart, marked not-live · status: manual-evidence
 
@@ -146,9 +146,9 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 - `tests/protocol/codec.test.ts :: "extra control.* field -> {ok:false} (strict boundary)" (line 128, pass)`
 - `tests/guards/invariants.test.ts :: "(d) FR-11: control.* frames are rejected at decodeClientMessage" (line 444, pass)`
 - `tests/guards/fail-soft.test.ts :: "decodeClientMessage rejects malformed/truncated/wrong-v/control.* — no throw" (line 493, pass)`
-- `tests/viewer/cli.test.ts :: "the only outbound frame is the handshake: no other socket write exists" (line 183, pass)`
-- `tests/viewer/cli.test.ts :: "no viewer source contains a steering frame type" (line 195, pass)`
-- `tests/viewer/cli.test.ts :: "keyFor maps every bound key to a declared read-only action" (line 93, pass)`
+- `tests/viewer/cli.test.ts :: "the only outbound frame is the handshake: no other socket write exists" (line 227, pass)`
+- `tests/viewer/cli.test.ts :: "no viewer source contains a steering frame type" (line 239, pass)`
+- `tests/viewer/cli.test.ts :: "keyFor maps every bound key to a declared read-only action" (line 94, pass)`
 
 - manual: tests/guards/sabotage.md §(d) — sabotage red — relaxing the strict client schema to `.object()` makes a `control` field pass
 
@@ -187,7 +187,7 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 
 - `tests/extension/resolve.test.ts :: "returns a runnable `bun <abs path to src/viewer/cli.ts>` invocation" (line 10, pass)`
 - `tests/extension/resolve.test.ts :: "is independent of process.cwd()" (line 22, pass)`
-- `tests/viewer/cli.test.ts :: "resolveViewerCommand resolves to the real cli.ts behind a runnable `bun` word" (line 84, pass)`
+- `tests/viewer/cli.test.ts :: "resolveViewerCommand resolves to the real cli.ts behind a runnable `bun` word" (line 85, pass)`
 - `tests/extension/topology-herdr.test.ts :: "the production viewer command word is a runnable `bun <cli.ts>` invocation" (line 474, pass)`
 
 - manual: docs/analysis/clean-profile-install.md §2–§3 — clean-profile `p6t7-clean` link + live delegation from `/private/tmp/p6t7-scratch`: viewer `[connected]`, argv rooted at installed package
@@ -216,7 +216,7 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 - `tests/guards/perf-bounds.test.ts :: "50k frames through encode/decode/roster/viewer: bounded heap, bounded lines" (line 133, pass)`
 - `tests/guards/perf-bounds.test.ts :: "50k decodes on a mixed junk corpus stays flat" (line 192, pass)`
 - `tests/extension/bridge.test.ts :: "rapid progress changes coalesce into a single upsert carrying the latest state" (line 358, pass)`
-- `tests/viewer/cli.test.ts :: "stamp-only upserts single-flight renders and keep last good text (P3-R11 bound)" (line 411, pass)`
+- `tests/viewer/cli.test.ts :: "stamp-only upserts single-flight renders and keep last good text (P3-R11 bound)" (line 455, pass)`
 
 - manual: .superpowers/sdd/2026-11-24-v1-hardening/progress.md (P6-4 completion line) — measured: 50k-frame heap delta 0.48MiB, junk 0.32MiB; 100-frame burst → 1 coalesced upsert
 
@@ -228,7 +228,7 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 - `tests/herdr/guards.test.ts :: "String.fromCharCode composition cannot evade the denylist" (line 86, pass)`
 - `tests/herdr/guards.test.ts :: "computed params keys cannot smuggle focus or tab_id" (line 91, pass)`
 - `tests/extension/topology.test.ts :: "owned panes are reported with source, never as an agent (P4-R13)" (line 234, pass)`
-- `tests/viewer/cli.test.ts :: "no viewer file calls any forbidden pane/agent API or imports the pane adapter" (line 159, pass)`
+- `tests/viewer/cli.test.ts :: "no viewer file calls any forbidden pane/agent API or imports the pane adapter" (line 203, pass)`
 - `tests/guards/invariants.test.ts :: "(g) F-15: every pi.on / pi.events.on / command handler is synchronous" (line 520, pass)`
 
 - manual: tests/guards/sabotage.md §(c)/§(g) — sabotage red — focus:true flips and async handlers both fail at the guarded boundary
@@ -245,7 +245,7 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 
 ### NFR-06 — Docs reconcile — docs match shipped behavior exactly · status: pass
 - manual: this report §Doc-vs-shipped checklist (DC-1..DC-21) — machine-asserted README/CONTRIBUTING/architecture sections contain shipped-truth content
-- manual: README.md §Verified commands — every documented command executed 2026-11-25 at commit c21b3cf, output quoted verbatim
+- manual: README.md §Verified commands — every documented command executed 2026-11-26 at commit a994629, output quoted verbatim
 
 ## Safety-invariant sabotage proofs (P6-R2/R3)
 
