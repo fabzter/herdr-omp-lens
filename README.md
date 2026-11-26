@@ -28,32 +28,37 @@ OMP stays the boss. It owns the workers and their results. This is just a window
 
 ## ✨ What you get
 
-- **`OMP subagents`** — one tab per OMP session in `$HERDR_WORKSPACE_ID`, opened with `--no-focus`
-  the first time a direct worker spawns. Run several OMP sessions in one workspace and each gets its
-  own tab (`OMP subagents · <id>` for the additional ones) — never a shared or hijacked view.
-- **Reopen on the next subtask.** Close the tab and the *next* spawn reopens exactly one — never two,
-  even under concurrent spawn events.
-- **Worker split.** `/lens split <workerId>` pops that worker into a no-focus worker-scoped split.
-  Closing the split never touches the worker.
-- **OMP's own look, two columns (v1.1).** The roster is painted by OMP's own TUI component
-  (`@oh-my-pi/pi-tui`'s `agent` painter, pinned to the installed OMP version) on the left; the
-  selected worker's detail — status, agent, model, lineage, counters — and its live transcript
-  (`omp render <sessionFile>`) fill the right. No second OMP instance: same pane process, same
-  bridge. Narrow panes stack the columns; `LENS_PLAIN=1`/`--plain` restores the legacy text view.
-- **Finished workers stay visible (v1.2).** Completed workers remain listed in a `finished (N):`
-  section — OMP-hub style — even after OMP reaps them; `e` collapses them on demand. Both columns
-  stay open at all times, including before the first delegation.
-- **History that knows it's history.** After an OMP restart the saved transcripts are still there,
-  labelled **not live** — the viewer never implies execution that isn't happening.
-- **Degraded mode (D1).** If the native `task:subagent:*` bus is unavailable, you get one warn
-  notice and workers are discovered by scanning the verified session-artifact directory instead.
-  If Herdr or the bridge dies mid-turn, your OMP turn completes normally.
+- **One tab per OMP session.** Run several OMP sessions in one workspace — each gets its own
+  `OMP subagents` tab (additional ones suffixed `· <id>`), never a shared or hijacked view.
+  Opens with `--no-focus` on the first delegation; close it and the *next* subtask reopens exactly one.
+- **OMP's own look.** The roster is painted by OMP's actual TUI component (`@oh-my-pi/pi-tui`'s
+  `agent` painter, pinned to your installed OMP version); the selected worker's detail and live
+  transcript (`omp render`) fill the right column. Fixed full-viewport frame: the footer stays
+  locked at the bottom, always.
+- **Finished workers stay visible.** Completed workers remain listed — OMP-hub style — even after
+  OMP reaps them. `e` collapses them on demand. Both columns stay open at all times.
+- **Scroll everything.** `J`/`K`, `PgUp`/`PgDn`, `g`/`G` — or just the **mouse wheel** — scroll the
+  transcript; `↑ N earlier lines` / `↓ N more lines` keep you oriented; `G` returns to live-follow.
+- **History that knows it's history.** After an OMP restart, saved transcripts are still there,
+  labelled `[not-live]` — the viewer never implies execution that isn't happening.
+- **Read-only by construction.** No key, click, or frame can steer, revive, or cancel a worker.
+  The bridge rejects every `control.*` frame at the handshake boundary.
+- **Fail-soft — degraded mode (D1).** If the native bus is unavailable, one warn notice and
+  artifact-scan discovery. If Herdr or the bridge dies mid-turn, your OMP turn completes normally.
 
 ### Scroll the transcript — keys or wheel
 
 ![Transcript scrolling with keys and mouse wheel](docs/assets/scroll.gif)
 
 ### Two OMP sessions, two tabs, zero hijack
+
+![One subagents tab per OMP session](docs/assets/multisession.gif)
+
+## 📦 Install
+
+**Requirements:** OMP 19.2.1 (the design pin — re-pinned 19.0.1 → 19.1.1 per OI-1 → 19.2.1 per
+OI-4, owner decisions 2026-11-25), Herdr 0.9.5, and [Bun](https://bun.sh) on `PATH`. The extension activates only inside a Herdr-managed pane
+(`HERDR_ENV=1`); outside Herdr it is a complete no-op.
 
 ```sh
 # from a clone of this repo
@@ -134,9 +139,29 @@ for the full design.
 
 Regenerate the evidence report with `bun scripts/gen-dod-report.ts`.
 
-Every command below was executed on 2026-11-25 at commit `c21b3cf` (OMP 19.2.1 / Herdr 0.9.5 — OI-4 re-pin) and
-its output is quoted verbatim; the install/plugin-list captures are from the earlier 19.1.1 run
-(version-stamped in the linked evidence doc). Regenerate the evidence report with `bun scripts/gen-dod-report.ts`.
+### Verified commands
+
+Every command below was executed on 2026-11-26 at commit `a994629` (OMP 19.2.1 / Herdr 0.9.5) and
+its output is quoted verbatim:
+
+```console
+$ bun test
+ 501 pass
+ 0 fail
+ 1832 expect() calls
+Ran 501 tests across 36 files. [3.82s]
+
+$ bun run typecheck          # tsc --noEmit — clean, no output
+
+$ bun run lint
+$ biome check src tests
+Checked 68 files in 24ms. No fixes applied.
+
+$ bash scripts/run-e2e.sh    # safe mode — disposable round-trip, dailies untouched
+checks    : 7 pass, 0 fail, 0 manual, 5 skipped, 5 notes
+```
+
+## Limitations
 
 Recorded known limitations — each a deliberate v1 boundary or an honest gap with a named capture:
 
