@@ -1,0 +1,37 @@
+{
+  "name": "fabzter-plugins",
+  "owner": {
+    "name": "Fabrizio Hernandez",
+    "url": "https://github.com/fabzter"
+  },
+  "metadata": {
+    "description": "Fabrizio's OMP plugins \u2014 terminal-native tools for Herdr workflows.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "herdr-omp-lens",
+      "source": {
+        "source": "github",
+        "repo": "fabzter/herdr-omp-lens",
+        "ref": "v1.0.0",
+        "sha": "4a8647dfc24995bb9090eaf7871d4e4f89273d98"
+      },
+      "description": "A window into OMP's native subagents, from inside Herdr \u2014 read-only, OMP's own TUI look, one tab per session.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Fabrizio Hernandez"
+      },
+      "homepage": "https://github.com/fabzter/herdr-omp-lens",
+      "repository": "https://github.com/fabzter/herdr-omp-lens",
+      "license": "MIT",
+      "keywords": [
+        "omp-plugin",
+        "herdr",
+        "subagents",
+        "tui",
+        "terminal"
+      ]
+    }
+  ]
+}

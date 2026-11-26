@@ -61,9 +61,16 @@ OI-4, owner decisions 2026-11-25), Herdr 0.9.5, and [Bun](https://bun.sh) on `PA
 (`HERDR_ENV=1`); outside Herdr it is a complete no-op.
 
 ```sh
-# from a clone of this repo
+# one-liner (no clone needed)
+omp plugin install github:fabzter/herdr-omp-lens#v1.0.0
+
+# or from a clone of this repo
 omp plugin link /path/to/herdr-omp-lens
 ```
+
+Also available via the [fabzter-plugins marketplace](.omp-plugin/marketplace.json):
+`omp plugin marketplace add fabzter/herdr-omp-lens` then
+`omp plugin install herdr-omp-lens@fabzter-plugins`.
 
 > **Inside a Herdr pane, strip `HERDR_*` for the install command** — the installer otherwise waits
 > on handles a running extension keeps open (install-time only; runtime is unaffected):
