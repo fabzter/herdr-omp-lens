@@ -88,9 +88,11 @@ multi-session board (v2).
   documented API) — it must not dump raw thinking by default (probe caveat 4). *Accept:* a fixture
   containing `thinking_*` deltas renders no thinking text at default; after toggling, the same
   fixture shows it; state survives worker re-selection.
-- **P3-R6 Finished collapse (FR-08).** Workers in `completed`/`failed`/`aborted` collapse into a
-  finished section by default; expanding reveals the worker + its result transcript. *Accept:* a
-  roster fixture with finished workers renders them collapsed; expand reveals result content.
+- **P3-R6 Finished visibility (FR-08, amended v1.2 — owner UX decision 2026-11-25).** Workers in
+  `completed`/`failed`/`aborted` render in a `finished (N):` section BY DEFAULT and persist after
+  `worker.removed` (retention ≤100); `e` collapses on demand. *Accept:* a roster fixture with
+  finished workers renders their rows without any keypress; collapse hides them; a removed finished
+  worker stays listed. *(Original v1: collapsed by default; expanding revealed results.)*
 - **P3-R7 Read-only (FR-11).** The viewer exposes **no** control affordance and never emits any
   `control.*` frame or any other outbound frame besides the `ClientMessage` handshake. The
   `/lens split <id>` command is itself read-only — it launches a scoped view, it does not steer,
@@ -141,7 +143,7 @@ multi-session board (v2).
 export interface ViewerState {
   session?: string;
   workers: Map<string, WorkerSnapshot>;     // includes historical entries; flag carries the label
-  finishedCollapsed: boolean;               // default true (FR-08)
+  finishedCollapsed: boolean;               // default false since v1.2 (FR-08 amended, owner decision)
   thinkingVisible: boolean;                 // default false — viewer toggle (D4)
   selectedId?: string;
   scope?: { workerId?: string };            // worker-scoped mode (D3); set from LENS_WORKER_ID/--worker

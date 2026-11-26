@@ -29,7 +29,7 @@ OMP interactive session (the agent that owns the workers)
   └─ src/viewer/                read-only renderer, runs as an ordinary Herdr pane
        cli           env/argv resolution, keymap, main loop
        client        connects, handshakes, applies hello + deltas (never writes after the handshake)
-       state/render  roster + collapsed finished section + history (not-live) + degraded/offline banners
+       state/render  roster + persistent finished section (v1.2: retained after reap, ≤100) + history (not-live) + banners
        tui           v1.1 two-column OMP-look screen: pi-tui `agent` painter roster (left) + inspector/transcript (right);
                      exact-version pin to the installed OMP; stacks <100 cols; LENS_PLAIN/--plain → legacy render
        transcript    `omp render <sessionFile> --plain` via a filtered temp copy (thinking hidden by default)
@@ -53,9 +53,10 @@ OMP interactive session (the agent that owns the workers)
 5. **Render.** The viewer paints roster, inspector, and the selected worker's transcript. On a TTY
    (v1.1) it renders OMP's own look through `@oh-my-pi/pi-tui`'s `agent` painter — two columns
    (roster left, detail right), stacked under 100 columns; a dynamic import falls back to the plain
-   single-column renderer when pi-tui is absent or `LENS_PLAIN=1`/`--plain` is set. Terminal
-   workers collapse into a finished section; historical entries carry a *not-live* badge. The only
-   bytes the viewer ever sends are its handshake.
+   single-column renderer when pi-tui is absent or `LENS_PLAIN=1`/`--plain` is set. Both columns
+   render at all times (v1.2, owner UX decision 2026-11-25): finished workers stay listed after
+   `worker.removed` (finished rows retained; non-terminal reaps demote to *not-live* history;
+   retention ≤100). The only bytes the viewer ever sends are its handshake.
 
 ## Topology lifecycle
 

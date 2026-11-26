@@ -25,11 +25,14 @@ function plain(text: string): string {
 
 describe("renderTuiScreen — E2E token contract (unchanged from render.ts)", () => {
 	test("header, roster sections, scope line and footer tokens all survive the pi-tui layout", () => {
-		const s = stateWith([
-			snap("a", { name: "alpha" }),
-			snap("b", { status: "completed" }),
-			snap("c", { name: "ghost", historical: true }),
-		]);
+		const s = stateWith(
+			[
+				snap("a", { name: "alpha" }),
+				snap("b", { status: "completed" }),
+				snap("c", { name: "ghost", historical: true }),
+			],
+			{ finishedCollapsed: true },
+		);
 		const text = plain(renderTuiScreen(s, { width: 140 }));
 		expect(text).toContain("omp lens — session sess-1 [connected]");
 		expect(text).toContain("workers (1):");
@@ -104,5 +107,41 @@ describe("renderTuiScreen — transcript + status mapping", () => {
 		const finishedRow = lines.find((l) => l.includes(" b ⟦task⟧"));
 		expect(finishedRow).toBeDefined();
 		expect(finishedRow).toContain("✔");
+	});
+});
+
+describe("renderTuiScreen — v1.2 persistent panes (owner UX decision 2026-11-25)", () => {
+	test("finished workers stay visible by default, OMP-hub style", () => {
+		const s = stateWith([snap("done-1", { name: "alpha", status: "completed" })]);
+		const text = plain(renderTuiScreen(s, { width: 140 }));
+		expect(text).toContain("workers (0):");
+		expect(text).toContain("finished (1):");
+		expect(text).toContain("alpha");
+		expect(text).not.toContain("press e to expand");
+	});
+
+	test("zero workers still renders BOTH columns with the empty-state hint", () => {
+		const s = stateWith([]);
+		const lines = renderTuiScreen(s, { width: 140 }).split("\n");
+		const sep = lines.filter((l) => l.includes("│"));
+		expect(sep.length).toBeGreaterThan(0);
+		const hintRow = sep.find((l) => plain(l).includes("(no agents yet"));
+		expect(hintRow).toBeDefined();
+		expect(plain(lines.join("\n"))).toContain("workers (0):");
+	});
+
+	test("workers present but none selected: right column shows the select hint, never disappears", () => {
+		const s = stateWith([snap("a", { name: "alpha" })]); // no selectedId
+		const lines = renderTuiScreen(s, { width: 140 }).split("\n");
+		const sep = lines.filter((l) => l.includes("│"));
+		expect(sep.length).toBeGreaterThan(0);
+		expect(sep.some((l) => plain(l).includes("(no agent selected"))).toBe(true);
+	});
+
+	test("retained finished row keeps the two-column detail after reaping (selection survives)", () => {
+		const s = stateWith([snap("a", { name: "alpha", status: "completed" })], { selectedId: "a" });
+		const lines = renderTuiScreen(s, { width: 140 }).split("\n");
+		const detailRow = lines.find((l) => l.includes("│") && plain(l).includes("worker: alpha"));
+		expect(detailRow).toBeDefined();
 	});
 });

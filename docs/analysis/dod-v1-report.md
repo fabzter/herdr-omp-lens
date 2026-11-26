@@ -3,11 +3,11 @@
 > GENERATED FILE — do not edit. Regenerate with `bun scripts/gen-dod-report.ts`.
 > Owner sign-off (P6-R11): **UNSIGNED — the owner signs, the agent only prepares.** See §Sign-off.
 
-- Generated: 2026-11-25 · commit `1d4511b` · Bun 1.3.14
+- Generated: 2026-11-26 · commit `77daebc` · Bun 1.3.14
 - Environment: OMP **19.2.1** (installed == spec pin **19.2.1** — OI-1 + OI-4 resolved 2026-11-25: 19.0.1 → 19.1.1 → 19.2.1) · Herdr **0.9.5** (probed live: `omp --version` / `herdr --version`)
-- Test gate: `bun test` → **469 pass / 0 fail** (160 suites, 1706 assertions)
-- Static gates: `bun run typecheck` clean · `bun run lint` clean (Checked 68 files in 51ms. No fixes applied.)
-- Suite summary: `Ran 469 tests across 36 files. [3.80s]`
+- Test gate: `bun test` → **474 pass / 0 fail** (161 suites, 1723 assertions)
+- Static gates: `bun run typecheck` clean · `bun run lint` clean (Checked 68 files in 21ms. No fixes applied.)
+- Suite summary: `Ran 474 tests across 36 files. [3.78s]`
 
 ## Requirement matrix
 
@@ -25,7 +25,7 @@ Every FR-01..15 + NFR-01..06 has exactly one row. Legend:
 | FR-05 | Reopen after close — next spawn reopens exactly one tab | pass | 4 tests pass | 1 capture |
 | FR-06 | Optional split — no-focus worker-scoped split, close ≠ cancel | manual-evidence | 6 tests pass | 1 capture (⚠ E2E s3 /lens split — typed-command input-clear + pane-list null-title bugs fixed; live witness pending post-E2) |
 | FR-07 | OMP-like detail — roster fields, inspector, live transcript | pass | 5 tests pass | — |
-| FR-08 | Finished collapse — completed workers collapse by default | pass | 4 tests pass | 1 capture |
+| FR-08 | Finished visibility — completed workers stay listed, retained after reap (v1.2, owner decision) | pass | 6 tests pass | — |
 | FR-09 | History — persisted transcripts after restart, marked not-live | manual-evidence | 6 tests pass | 1 capture (⚠ E2E s4 restart→history — env-coupled local-build session-bind gap in Runs C/D/E/E2) |
 | FR-10 | Direct-only scope — nested and other-session workers excluded | pass | 3 tests pass | — |
 | FR-11 | Read-only — no control frames, no control affordance | pass | 6 tests pass | 1 capture |
@@ -110,19 +110,19 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 ### FR-07 — OMP-like detail — roster fields, inspector, live transcript · status: pass
 
 - `tests/viewer/render.test.ts :: "renders detail lines incl. model/role/thinking/session (FR-07)" (line 85, pass)`
-- `tests/viewer/render.test.ts :: "selected worker gets inspector + transcript block" (line 185, pass)`
+- `tests/viewer/render.test.ts :: "selected worker gets inspector + transcript block" (line 181, pass)`
 - `tests/viewer/render.test.ts :: "renders all present counters; empty when none" (line 35, pass)`
 - `tests/viewer/transcript.test.ts :: "spawns `omp render <sessionFile> --plain` by default; never history://" (line 89, pass)`
 - `tests/viewer/transcript.test.ts :: "real `omp render` on a synthetic fixture exits 0 and hides thinking by default" (line 199, pass)`
 
-### FR-08 — Finished collapse — completed workers collapse by default · status: pass
+### FR-08 — Finished visibility — completed workers stay listed, retained after reap (v1.2, owner decision) · status: pass
 
-- `tests/viewer/render.test.ts :: "finished collapse: collapsed by default, expanded reveals rows (P3-R6)" (line 152, pass)`
-- `tests/viewer/render.test.ts :: "finished workers are not selectable while collapsed; appear when expanded" (line 118, pass)`
-- `tests/viewer/state.test.ts :: "completed/failed/aborted are finished; others are not" (line 285, pass)`
-- `tests/viewer/cli.test.ts :: "navigation skips finished workers while collapsed; expansion reveals them" (line 125, pass)`
-
-- manual: docs/analysis/e2e-evidence.md Fix-round F3 — collapse is transient — recorded `manual "finished-collapse"` again in owner-witnessed Run D (unit-covered, NOT witnessed live)
+- `tests/viewer/render.test.ts :: "finished visible by default (v1.2 owner decision); collapse on demand hides rows" (line 148, pass)`
+- `tests/viewer/render.test.ts :: "finished workers selectable by default (v1.2); hidden while collapsed on demand" (line 118, pass)`
+- `tests/viewer/state.test.ts :: "removed keeps a finished row visible with its terminal status; selection + ref survive (v1.2)" (line 144, pass)`
+- `tests/viewer/state.test.ts :: "retention is bounded: oldest non-live rows evicted past 100; live rows never evicted (v1.2, NFR-03)" (line 168, pass)`
+- `tests/viewer/cli.test.ts :: "navigation includes finished by default (v1.2); collapsing hides them from selection" (line 125, pass)`
+- `tests/viewer/tui.test.ts :: "zero workers still renders BOTH columns with the empty-state hint" (line 123, pass)`
 
 ### FR-09 — History — persisted transcripts after restart, marked not-live · status: manual-evidence
 
@@ -130,7 +130,7 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 - `tests/extension/history/status.test.ts :: "completed transcript maps completed, counters absent, historical" (line 65, pass)`
 - `tests/extension/history/wiring.test.ts :: "hello.history carries scanned workers on connect AND reconnect" (line 233, pass)`
 - `tests/extension/history/restart.test.ts :: "new activation surfaces prior workers: not-live, transcript.ref, no spawn, no live copy" (line 164, pass)`
-- `tests/viewer/render.test.ts :: "history section renders with not-live label (P3-R9)" (line 167, pass)`
+- `tests/viewer/render.test.ts :: "history section renders with not-live label (P3-R9)" (line 163, pass)`
 - `tests/viewer/state.test.ts :: "live upsert wins over a historical entry for the same id (RC-3)" (line 106, pass)`
 
 - manual: docs/analysis/e2e-evidence.md §Manual-evidence steps — E2E step s4 (OMP restart → auto-open + not-live history) — STILL manual after owner-witnessed Runs D/E/E2 2026-11-25: local-build (-e) session-bind gap (agent_session never bound) → viewer-reconnect timeout 30s×2; tab reuse/rebind DID pass live in every run
@@ -159,7 +159,7 @@ Totals: **19 pass · 2 manual-evidence · 0 fail** out of 21 requirements.
 - `tests/guards/fail-soft.test.ts :: "circuit-break: adapter over a stalled socket degrades the topology with one notice" (line 633, pass)`
 - `tests/guards/invariants.test.ts :: "(f) FR-12: handlers never throw when bridge + Herdr are dead" (line 486, pass)`
 - `tests/extension/topology.test.ts :: "adapter failure degrades + notice, spawn signals still flow (P4-R11)" (line 416, pass)`
-- `tests/viewer/render.test.ts :: "degraded and offline states are surfaced (FR-12, D1)" (line 174, pass)`
+- `tests/viewer/render.test.ts :: "degraded and offline states are surfaced (FR-12, D1)" (line 170, pass)`
 
 - manual: tests/guards/sabotage.md §(f) — sabotage red — an unguarded notice subscriber throws "dead bridge" into the handler
 
@@ -307,7 +307,7 @@ Clean restore: `git diff -- src/` empty; clean re-run `7 pass, 0 fail, 83 expect
 - `detached` semantics for TUI async spawns is unverified (field `optional()`, unconsumed — harmless but unverified) — _source: docs/analysis/phase-0-caveat-closure.md §Recorded limitations 3_
 - pre-activation workers are not observed — no registry snapshot exists for extensions (U-OMP-5) — _source: docs/analysis/phase-0-caveat-closure.md §U-OMP unknowns_
 - history caveat (R-04): live `counters` are not reconstructable from persisted JSONL — historical rows show `counters` absent + not-live badge — _source: docs/superpowers/specs/2026-11-19-herdr-omp-lens-design.md §12 R-04_
-- transient finished-collapse is unit-covered, not witnessed live (reaping can outpace readback) — _source: docs/analysis/e2e-evidence.md Fix-round F3_
+- v1.2 (owner UX decision 2026-11-25): finished rows persist after reap (FR-08 amended) — the old transient-collapse limitation is superseded; rows reaped without a terminal upsert demote to [not-live] history — _source: docs/superpowers/specs/2026-11-19-herdr-omp-lens-design.md §5 FR-08 (v1.2 amendment)_
 - Herdr-restart viewer-layout restore is out of scope for v1 (v2 horizon) — _source: docs/plans/00-master-plan.md §2 v2 horizon_
 - spec re-pinned 19.0.1 → 19.1.1 (OI-1) → 19.2.1 (OI-4), owner decisions 2026-11-25: installed binary upgraded to 19.2.1; earlier evidence stays version-stamped (19.1.1); observed bus shapes unchanged from the 19.0.1 Phase-0 probe; pi-tui/pi-wire pinned to the same 19.2.1 — _source: docs/analysis/clean-profile-install.md §1_
 - E2E live steps s3–s5 (/lens split, restart→history, cross-workspace focus) remain manual after owner-witnessed Run D 2026-11-25 — env-coupled: s3 pane-get JSON EOF flake; s4 local-build session-bind gap → viewer-reconnect timeout; s5 spawn-lands timeout (correlated). s1/s2 live-proven in Run D (w17) — _source: docs/analysis/e2e-evidence.md §Manual-evidence steps_

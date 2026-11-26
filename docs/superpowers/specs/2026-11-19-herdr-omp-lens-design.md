@@ -28,7 +28,8 @@ window, not a second host.
 - One no-focus overview tab in the caller workspace; optional worker splits.
 - Auto-open on delegation while in Herdr; reopen on the **next subtask** after a manual close.
 - Worker detail close to OMP's native task view (roster + inspector + live transcript).
-- Finished workers collapsed by default; history accessible, including persisted history after restart.
+- Finished workers stay visible (v1.2 amendment, owner UX decision 2026-11-25; originally collapsed
+  by default); history accessible, including persisted history after restart.
 - A reusable, well-documented package with personality.
 
 **v1 non-goals**
@@ -111,8 +112,13 @@ Components (one responsibility each):
 - **FR-07 OMP-like detail.** Roster fields (status, model, age, usage/counters when available) +
   inspector (current tool/activity, lineage) + live transcript. *Accept:* detail matches the documented
   Agent Hub field set to the extent the bus/artifacts expose it (R-01 bounded).
-- **FR-08 Finished collapse.** Finished workers collapse by default; expandable on demand. *Accept:*
-  completed batch shows a collapsed finished section; expanding reveals results.
+- **FR-08 Finished visibility (amended v1.2, owner UX decision 2026-11-25).** Finished workers STAY
+  visible in a `finished (N):` section by default (OMP-hub style) and are retained after OMP reaps
+  them (`worker.removed` no longer deletes finished rows; non-terminal reaped rows demote to
+  `[not-live]` history; retention capped at 100, NFR-03). `e` collapses on demand. Both viewer
+  columns render at all times, including the zero-worker empty state. *Accept:* a completed batch
+  shows its finished rows without any keypress; collapsing hides them; a reaped worker never
+  vanishes from the list. *(Original v1: collapsed by default, expandable on demand.)*
 - **FR-09 History.** Persisted transcripts are accessible; after OMP restart, show saved history marked
   **not live**. *Accept:* a parked worker's transcript renders from disk; restart shows history without
   implying live execution.
@@ -154,7 +160,8 @@ Server → client `Message` types (observation-only):
 
 - `hello` — `{session, workers: WorkerSnapshot[], history?: WorkerSnapshot[]}` (initial roster + persisted history).
 - `worker.upsert` — `{worker: WorkerSnapshot}` (wrapped, not flat).
-- `worker.removed` — `{id}`.
+- `worker.removed` — `{id}`. Viewer semantics since v1.2: finished rows are RETAINED (finished
+  section); non-finished rows demote to historical — the frame never deletes a visible row.
 - `transcript.ref` — `{id, sessionFile, artifactDir?}` (references + activity, not full transcript bytes).
 - `topology` — `{tabId?, paneIds:[…], state:"open"|"closed"}` (informational).
 - `notice` — `{level, message}` for fail-soft degradation.
@@ -196,7 +203,7 @@ Client → server: only `ClientMessage` in v1. Reserved (v2, **not implemented**
   (verified host-less, exit 0) over the documented artifact JSONL (V-OMP-8). `omp read history://<id>` requires the
   owning live session (fails host-less) and is used only in-session (F-11). No lease acquired.
 - Thinking visibility is a **viewer toggle, default hidden** (D4); there is no documented OMP API to read it.
-- Finished workers collapse (FR-08); results render from `<id>.md` / JSONL.
+- Finished workers stay visible and survive reaping (FR-08 v1.2); results render from `<id>.md` / JSONL.
 - After OMP restart, scan the persisted artifact tree (`~/.omp/agent/sessions/<encoded-cwd>/<session-dir>/<id>.jsonl`,
   verified) and show saved history marked **not live** (FR-09). Live counters are not reconstructable; label historical.
 

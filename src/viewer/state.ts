@@ -40,7 +40,8 @@ export interface ViewerState {
 	session?: string;
 	/** Includes historical entries; `historical:true` carries the not-live label. */
 	workers: Map<string, WorkerSnapshot>;
-	/** Default true (FR-08): finished workers collapse into one section. */
+	/** Default false since v1.2 (owner UX decision 2026-11-25, FR-08 amended):
+	 * finished workers stay visible like OMP's hub; `e` collapses on demand. */
 	finishedCollapsed: boolean;
 	/** Default false — viewer-local toggle (D4); never fetched from OMP. */
 	thinkingVisible: boolean;
@@ -59,6 +60,8 @@ export interface ViewerState {
 }
 
 const MAX_NOTICES = 100;
+/** v1.2: cap on retained finished/historical rows (live rows never evicted). */
+const MAX_RETAINED = 100;
 const FINISHED: Record<string, true> = { completed: true, failed: true, aborted: true };
 
 /** FR-08 collapse partition: renderer uses this; the reducer only keeps the flag. */
@@ -69,7 +72,7 @@ export function isFinishedStatus(status: WorkerStatus): boolean {
 export function initialViewerState(init?: Partial<ViewerState>): ViewerState {
 	return {
 		workers: new Map(),
-		finishedCollapsed: true,
+		finishedCollapsed: false,
 		thinkingVisible: false,
 		degraded: false,
 		notices: [],
@@ -127,17 +130,29 @@ function reduceMessage(s: ViewerState, m: Message): ViewerState {
 			return { ...s, workers };
 		}
 		case "worker.removed": {
-			if (!s.workers.has(m.id)) return s;
+			const existing = s.workers.get(m.id);
+			if (existing === undefined) return s;
+			// v1.2 (owner UX decision 2026-11-25): reaped workers STAY visible,
+			// OMP-hub style. A finished row keeps its terminal status (finished
+			// section); a non-finished row can no longer claim live execution,
+			// so it demotes to historical ([not-live]) instead of vanishing.
 			const workers = new Map(s.workers);
-			workers.delete(m.id);
-			const next: ViewerState = { ...s, workers };
-			if (s.selectedId === m.id) next.selectedId = undefined;
-			if (s.transcriptRefs.has(m.id)) {
-				const transcriptRefs = new Map(s.transcriptRefs);
-				transcriptRefs.delete(m.id);
-				next.transcriptRefs = transcriptRefs;
+			workers.set(
+				m.id,
+				isFinishedStatus(existing.status) ? existing : { ...existing, historical: true },
+			);
+			// Bounded retention (NFR-03): evict oldest non-live rows past the cap.
+			const nonLive = [...workers.values()]
+				.filter((w) => w.historical === true || isFinishedStatus(w.status))
+				.sort((a, b) => a.updatedAt - b.updatedAt);
+			let selectedId = s.selectedId;
+			for (let i = 0; i < nonLive.length - MAX_RETAINED; i += 1) {
+				const evicted = nonLive[i];
+				if (evicted === undefined) continue;
+				workers.delete(evicted.id);
+				if (selectedId === evicted.id) selectedId = undefined;
 			}
-			return next;
+			return { ...s, workers, selectedId };
 		}
 		case "transcript.ref": {
 			const transcriptRefs = new Map(s.transcriptRefs);

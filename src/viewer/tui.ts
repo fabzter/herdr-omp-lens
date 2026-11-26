@@ -84,10 +84,16 @@ function agentRow(w: WorkerSnapshot, selected: boolean, width: number): string[]
 	return block.rows.map((row, i) => `${selected && i === 0 ? ">" : " "} ${row}`);
 }
 
-/** Selected worker's detail (inspector + transcript), wrapped to the column. */
+/** Selected worker's detail (inspector + transcript), wrapped to the column.
+ * v1.2: never empty — with no selection the column shows a hint, so both
+ * panes stay open all the time (owner UX decision 2026-11-25). */
 function detailLines(s: ViewerState, opts: TuiScreenOptions, width: number): string[] {
 	const w = s.selectedId !== undefined ? s.workers.get(s.selectedId) : undefined;
-	if (w === undefined) return [];
+	if (w === undefined) {
+		return s.workers.size === 0
+			? wrap("(no agents yet — delegate a task in OMP to see it here)", width)
+			: wrap("(no agent selected — j/k to select)", width);
+	}
 	const lines: string[] = [];
 	for (const line of inspector(w)) lines.push(...wrap(line, width));
 	lines.push("");
@@ -145,7 +151,7 @@ export function renderTuiScreen(s: ViewerState, opts: TuiScreenOptions = {}): st
 	const left = rosterLines(s, width >= STACK_BELOW ? leftWidth(width) : width);
 	const right = detailLines(s, opts, width >= STACK_BELOW ? rightWidth(width) : width);
 
-	if (width < STACK_BELOW || right.length === 0) {
+	if (width < STACK_BELOW) {
 		return [header, ...noticeLines, ...left, "", ...right, footer(s)].join("\n");
 	}
 
@@ -155,7 +161,7 @@ export function renderTuiScreen(s: ViewerState, opts: TuiScreenOptions = {}): st
 	for (let i = 0; i < rows; i += 1) {
 		const l = padTo(left[i] ?? "", leftW);
 		const r = truncate(right[i] ?? "", rightWidth(width), "");
-		body.push(r === "" && i >= right.length ? `${l}  ${"".padEnd(0)}` : `${l}  ${SEP} ${r}`);
+		body.push(`${l}  ${SEP} ${r}`);
 	}
 	return [header, ...noticeLines, ...body, footer(s)].join("\n");
 }

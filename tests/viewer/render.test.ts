@@ -115,18 +115,14 @@ describe("inspector", () => {
 });
 
 describe("selectableWorkerIds", () => {
-	test("finished workers are not selectable while collapsed; appear when expanded", () => {
+	test("finished workers selectable by default (v1.2); hidden while collapsed on demand", () => {
 		const s = stateWith([
 			snap("live-1"),
 			snap("done-1", { status: "completed" }),
 			snap("done-2", { status: "failed" }),
 		]);
-		expect(selectableWorkerIds(s)).toEqual(["live-1"]);
-		expect(selectableWorkerIds({ ...s, finishedCollapsed: false })).toEqual([
-			"live-1",
-			"done-1",
-			"done-2",
-		]);
+		expect(selectableWorkerIds(s)).toEqual(["live-1", "done-1", "done-2"]);
+		expect(selectableWorkerIds({ ...s, finishedCollapsed: true })).toEqual(["live-1"]);
 	});
 
 	test("historical rows stay selectable (they render a file, not live tail)", () => {
@@ -149,19 +145,19 @@ describe("renderScreen — roster mode", () => {
 		expect(out).toContain("b");
 	});
 
-	test("finished collapse: collapsed by default, expanded reveals rows (P3-R6)", () => {
+	test("finished visible by default (v1.2 owner decision); collapse on demand hides rows", () => {
 		const s = stateWith([
 			snap("live-1"),
 			snap("done-1", { status: "completed" }),
 			snap("done-2", { status: "aborted" }),
 		]);
-		const collapsed = renderScreen(s);
-		expect(collapsed).toContain("finished");
-		expect(collapsed).toContain("2");
-		expect(collapsed).not.toContain("done-1");
-		const expanded = renderScreen({ ...s, finishedCollapsed: false });
+		const expanded = renderScreen(s);
+		expect(expanded).toContain("finished (2):");
 		expect(expanded).toContain("done-1");
 		expect(expanded).toContain("done-2");
+		const collapsed = renderScreen({ ...s, finishedCollapsed: true });
+		expect(collapsed).toContain("finished (2) — press e to expand");
+		expect(collapsed).not.toContain("done-1");
 	});
 
 	test("history section renders with not-live label (P3-R9)", () => {

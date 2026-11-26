@@ -15,9 +15,9 @@ function historical(id: string, over: Partial<WorkerSnapshot> = {}): WorkerSnaps
 }
 
 describe("initialViewerState", () => {
-	test("defaults: finished collapsed, thinking hidden, not live, not degraded", () => {
+	test("defaults: finished visible (v1.2 owner decision), thinking hidden, not live, not degraded", () => {
 		const s = initialViewerState();
-		expect(s.finishedCollapsed).toBe(true);
+		expect(s.finishedCollapsed).toBe(false);
 		expect(s.thinkingVisible).toBe(false);
 		expect(s.live).toBe(false);
 		expect(s.degraded).toBe(false);
@@ -127,7 +127,7 @@ describe("applyMessage — worker.upsert / worker.removed", () => {
 		expect(s.workers.get("h9")?.historical).toBe(true);
 	});
 
-	test("removed deletes a known id; unknown ids are a no-op (P3-R8)", () => {
+	test("removed retains a non-finished row as historical; unknown ids are a no-op (v1.2)", () => {
 		let s = applyMessage(initialViewerState(), {
 			v: 1,
 			type: "hello",
@@ -135,19 +135,20 @@ describe("applyMessage — worker.upsert / worker.removed", () => {
 			workers: [live("w1")],
 		});
 		s = applyMessage(s, { v: 1, type: "worker.removed", id: "w1" });
-		expect(s.workers.size).toBe(0);
+		expect(s.workers.size).toBe(1);
+		expect(s.workers.get("w1")?.historical).toBe(true);
 		s = applyMessage(s, { v: 1, type: "worker.removed", id: "ghost" });
-		expect(s.workers.size).toBe(0);
+		expect(s.workers.size).toBe(1);
 	});
 
-	test("removed clears selectedId and the transcript ref for that id (F3)", () => {
+	test("removed keeps a finished row visible with its terminal status; selection + ref survive (v1.2)", () => {
 		let s = applyMessage(
 			{ ...initialViewerState(), selectedId: "w1" },
 			{
 				v: 1,
 				type: "hello",
 				session: "s",
-				workers: [live("w1"), live("w2")],
+				workers: [live("w1", { status: "completed" }), live("w2")],
 			},
 		);
 		s = applyMessage(s, {
@@ -157,10 +158,29 @@ describe("applyMessage — worker.upsert / worker.removed", () => {
 			sessionFile: "/tmp/w1.jsonl",
 		});
 		s = applyMessage(s, { v: 1, type: "worker.removed", id: "w1" });
-		expect(s.workers.has("w1")).toBe(false);
-		expect(s.selectedId).toBeUndefined();
-		expect(s.transcriptRefs.has("w1")).toBe(false);
+		expect(s.workers.get("w1")?.status).toBe("completed");
+		expect(s.workers.get("w1")?.historical).toBeUndefined();
+		expect(s.selectedId).toBe("w1");
+		expect(s.transcriptRefs.has("w1")).toBe(true);
 		expect(s.workers.has("w2")).toBe(true);
+	});
+
+	test("retention is bounded: oldest non-live rows evicted past 100; live rows never evicted (v1.2, NFR-03)", () => {
+		let s = initialViewerState();
+		for (let i = 0; i < 105; i += 1) {
+			s = applyMessage(s, {
+				v: 1,
+				type: "worker.upsert",
+				worker: live(`done-${i}`, { status: "completed", updatedAt: 1_000 + i }),
+			});
+			s = applyMessage(s, { v: 1, type: "worker.removed", id: `done-${i}` });
+		}
+		s = applyMessage(s, { v: 1, type: "worker.upsert", worker: live("still-running") });
+		expect(s.workers.size).toBe(101); // 100 retained finished + 1 live
+		expect(s.workers.has("done-0")).toBe(false);
+		expect(s.workers.has("done-4")).toBe(false);
+		expect(s.workers.has("done-104")).toBe(true);
+		expect(s.workers.has("still-running")).toBe(true);
 	});
 
 	test("hello live-wins: same id in workers and history stays live (F1)", () => {
