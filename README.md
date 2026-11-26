@@ -61,7 +61,10 @@ OI-4, owner decisions 2026-11-25), Herdr 0.9.5, and [Bun](https://bun.sh) on `PA
 (`HERDR_ENV=1`); outside Herdr it is a complete no-op.
 
 ```sh
-# one-liner (no clone needed)
+# from npm (recommended)
+omp plugin install herdr-omp-lens
+
+# or from git (no clone needed)
 omp plugin install github:fabzter/herdr-omp-lens#v1.0.0
 
 # or from a clone of this repo
