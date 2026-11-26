@@ -270,29 +270,31 @@ const REQS: Requirement[] = [
 	},
 	{
 		id: "FR-08",
-		title: "Finished collapse — completed workers collapse by default",
+		title: "Finished visibility — completed workers stay listed, retained after reap (v1.2, owner decision)",
 		tests: [
 			{
 				file: "tests/viewer/render.test.ts",
-				name: "finished collapse: collapsed by default, expanded reveals rows (P3-R6)",
+				name: "finished visible by default (v1.2 owner decision); collapse on demand hides rows",
 			},
 			{
 				file: "tests/viewer/render.test.ts",
-				name: "finished workers are not selectable while collapsed; appear when expanded",
+				name: "finished workers selectable by default (v1.2); hidden while collapsed on demand",
 			},
 			{
 				file: "tests/viewer/state.test.ts",
-				name: "completed/failed/aborted are finished; others are not",
+				name: "removed keeps a finished row visible with its terminal status; selection + ref survive (v1.2)",
+			},
+			{
+				file: "tests/viewer/state.test.ts",
+				name: "retention is bounded: oldest non-live rows evicted past 100; live rows never evicted (v1.2, NFR-03)",
 			},
 			{
 				file: "tests/viewer/cli.test.ts",
-				name: "navigation skips finished workers while collapsed; expansion reveals them",
+				name: "navigation includes finished by default (v1.2); collapsing hides them from selection",
 			},
-		],
-		manual: [
 			{
-				capture: "docs/analysis/e2e-evidence.md Fix-round F3",
-				what: "collapse is transient — recorded `manual \"finished-collapse\"` again in owner-witnessed Run D (unit-covered, NOT witnessed live)",
+				file: "tests/viewer/tui.test.ts",
+				name: "zero workers still renders BOTH columns with the empty-state hint",
 			},
 		],
 	},
@@ -851,8 +853,8 @@ const LIMITATIONS: { what: string; source: string }[] = [
 		source: "docs/superpowers/specs/2026-11-19-herdr-omp-lens-design.md §12 R-04",
 	},
 	{
-		what: "transient finished-collapse is unit-covered, not witnessed live (reaping can outpace readback)",
-		source: "docs/analysis/e2e-evidence.md Fix-round F3",
+		what: "v1.2 (owner UX decision 2026-11-25): finished rows persist after reap (FR-08 amended) — the old transient-collapse limitation is superseded; rows reaped without a terminal upsert demote to [not-live] history",
+		source: "docs/superpowers/specs/2026-11-19-herdr-omp-lens-design.md §5 FR-08 (v1.2 amendment)",
 	},
 	{
 		what: "Herdr-restart viewer-layout restore is out of scope for v1 (v2 horizon)",

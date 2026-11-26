@@ -39,8 +39,9 @@ the live Herdr lifecycle steps listed in the report's open items before v1 is de
   selected worker's detail — status, agent, model, lineage, counters — and its live transcript
   (`omp render <sessionFile>`) fill the right. No second OMP instance: same pane process, same
   bridge. Narrow panes stack the columns; `LENS_PLAIN=1`/`--plain` restores the legacy text view.
-- **Finished collapse.** Completed workers are tucked into a collapsed section by default;
-  `e` expands them.
+- **Finished workers stay visible (v1.2).** Completed workers remain listed in a `finished (N):`
+  section — OMP-hub style — even after OMP reaps them; `e` collapses them on demand. Both columns
+  stay open at all times, including before the first delegation.
 - **History that knows it's history.** After an OMP restart the saved transcripts are still there,
   labelled **not live** — the viewer never implies execution that isn't happening.
 - **Degraded mode (D1).** If the native `task:subagent:*` bus is unavailable, you get one warn
@@ -182,9 +183,9 @@ capture; none is a silent pass.
    is deliberately unconsumed, so TUI async-spawn variance is harmless — but unverified.
 4. **Pre-activation workers (U-OMP-5).** There is no registry snapshot for extensions; a worker that
    started before the extension activated never appears.
-5. **Transient finished-collapse.** The collapsed section is a live UI state: reaping can be faster
-   than a readback, so a green E2E run does not imply it was *seen* — it is unit-covered and reported
-   as such, never as a witnessed pass.
+5. ~~Transient finished-collapse~~ **Superseded (v1.2, owner UX decision 2026-11-25).** Finished
+   rows now persist after reaping, so the section is a steady state, not a transient window. Rows
+   reaped *without* a terminal status demote to `[not-live]` history instead of vanishing.
 6. **Herdr-restart restore is out of scope for v1.** A surviving *OMP* viewer tab is reused and
    rebound to the new bridge socket on restart; restoring the viewer layout after a *Herdr* server
    restart is a v2 horizon item.

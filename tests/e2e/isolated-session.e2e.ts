@@ -9,7 +9,8 @@
  *   2. manual close → next subtask reopens exactly ONE tab (FR-05);
  *   3. read-only `/lens split <workerId>` opens a no-focus worker-scoped
  *      viewer (LENS_WORKER_ID, D3);
- *   4. finished-collapse ("finished (N) — press e to expand");
+ *   4. finished visibility (v1.2): reaped finished workers PERSIST in
+ *      "finished (N):" — no transient window; collapse is on-demand only;
  *   5. OMP restart (local build, P5 history): overview auto-opens on
  *      non-empty history (D2), a surviving viewer tab is reused/reconnected
  *      to the NEW socket — never duplicated — prior workers render
@@ -943,15 +944,15 @@ async function stepSetupAndSpawn(before: Enumerate): Promise<void> {
 	}
 	pass(step, "viewer connected, live worker listed", "[connected] + workers (>=1)");
 
-	// --- prompt completes; worker collapses into finished ---------------------
-	// Poll for the transient finished-collapse WHILE the turn runs: the bridge
-	// broadcasts upsert{completed} then worker.removed back-to-back, so the
-	// "finished (N) — press e to expand" row exists only in a short window.
+	// --- prompt completes; finished worker PERSISTS (v1.2) --------------------
+	// Since v1.2 (owner UX decision 2026-11-25) worker.removed retains finished
+	// rows: "finished (N):" is the steady post-finish state, not a transient
+	// window. Poll AFTER the turn for the persistent section.
 	const collapsePoll = waitFor(
-		"finished-collapse (transient window)",
+		"finished section persists (v1.2)",
 		async () => {
 			const text = await paneRead(st.overviewPaneId as string);
-			const m = /finished \((\d+)\) — press e to expand/.exec(text);
+			const m = /finished \((\d+)\):/.exec(text);
 			return m !== null ? { text, n: m[1] } : undefined;
 		},
 		T.finishedMs,
@@ -968,29 +969,28 @@ async function stepSetupAndSpawn(before: Enumerate): Promise<void> {
 	const collapsed = await collapsePoll
 		.then((r) => ({ ...r.v, witnessed: true as const }))
 		.catch(async () => {
-			// The transient window was missed — the finished worker is removed
-			// by design (roster finished→worker.removed). Workers (0) IS the
-			// post-finish steady state; assert that and record the limitation.
+			// v1.2 fallback: a worker reaped WITHOUT a terminal upsert demotes to
+			// historical ([not-live]) — still visible, never silently dropped.
 			const text = await paneRead(st.overviewPaneId as string);
-			if (!/workers \(0\):/.test(text)) {
-				throw fail(
-					step,
-					"finished-collapse",
-					"collapse window missed AND roster not empty — worker never finished",
-				);
-			}
-			return { text, n: "transient", witnessed: false as const };
+			const h = /history \((\d+)\):/.exec(text);
+			if (h !== null) return { text, n: h[1], witnessed: false as const };
+			throw fail(
+				step,
+				"finished visibility (v1.2)",
+				"no finished/history section after the turn — reaped worker vanished (retention regression)",
+			);
 		});
 	if (collapsed.witnessed) {
-		pass(step, "finished-collapse", `finished (${collapsed.n}) — press e to expand`);
-	} else {
-		// F3: workers(0) proves reaping, NOT that the collapse UI rendered —
-		// record manual evidence so a green run never implies it was witnessed.
-		record(
+		pass(
 			step,
-			"finished-collapse",
-			"manual",
-			"collapse window missed — workers(0) proves the worker reaped, but 'finished (N) — press e to expand' was NOT witnessed live (unit-covered; rerun RUN_E2E_LIVE=1)",
+			"finished section persists (v1.2)",
+			`finished (${collapsed.n}): — row retained after reap`,
+		);
+	} else {
+		note(
+			step,
+			"finished visibility (v1.2)",
+			`worker reaped without terminal upsert — retained as history (${collapsed.n}): [not-live]`,
 		);
 	}
 	collectWorkerIds(step);
@@ -1128,12 +1128,10 @@ async function stepCloseReopen(): Promise<void> {
 		"second worker reaches terminal state",
 		async () => {
 			const text = await paneRead(st.overviewPaneId as string);
-			// finished-collapse is transient (upsert→removed back-to-back);
-			// workers(0) is the steady post-finish state — both prove terminal.
-			if (/finished \([1-9]\d*\) — press e to expand/.test(text))
-				return "finished-collapse observed";
-			if (/workers \(0\):/.test(text))
-				return "workers (0) — finished worker reaped (transient collapse missed)";
+			// v1.2: finished rows persist after reap; history fallback for a
+			// non-terminal reap. workers(0) alone no longer proves terminal.
+			if (/finished \([1-9]\d*\):/.test(text)) return "finished section persists (v1.2)";
+			if (/history \([1-9]\d*\):/.test(text)) return "reaped worker retained as history (v1.2)";
 			return undefined;
 		},
 		T.finishedMs,
@@ -1450,8 +1448,8 @@ async function stepCrossWorkspaceFocus(): Promise<void> {
 		"post-spawn worker reaches terminal state",
 		async () => {
 			const text = await paneRead(st.overviewPaneId as string);
-			if (/finished \([1-9]\d*\)/.test(text)) return "finished-collapse observed";
-			if (/workers \(0\):/.test(text)) return "workers (0) steady state";
+			if (/finished \([1-9]\d*\):/.test(text)) return "finished section persists (v1.2)";
+			if (/history \([1-9]\d*\):/.test(text)) return "reaped worker retained as history (v1.2)";
 			return undefined;
 		},
 		T.finishedMs,

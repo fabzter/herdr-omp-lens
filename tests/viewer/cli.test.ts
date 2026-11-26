@@ -117,12 +117,12 @@ describe("read-only keyboard map (P3-R7 accept: keyboard-map audit)", () => {
 		s = handleKey(s, "selectPrev");
 		expect(s.selectedId).toBe("a");
 		s = handleKey(s, "toggleFinished");
-		expect(s.finishedCollapsed).toBe(false);
+		expect(s.finishedCollapsed).toBe(true); // v1.2: default expanded, e collapses
 		s = handleKey(s, "toggleThinking");
 		expect(s.thinkingVisible).toBe(true);
 	});
 
-	test("navigation skips finished workers while collapsed; expansion reveals them", () => {
+	test("navigation includes finished by default (v1.2); collapsing hides them from selection", () => {
 		let s = initialViewerState({
 			live: true,
 			workers: new Map([
@@ -133,10 +133,10 @@ describe("read-only keyboard map (P3-R7 accept: keyboard-map audit)", () => {
 		s = handleKey(s, "selectNext");
 		expect(s.selectedId).toBe("live-1");
 		s = handleKey(s, "selectNext");
-		expect(s.selectedId).toBe("live-1"); // no wrap into collapsed section
-		s = handleKey(s, "toggleFinished");
+		expect(s.selectedId).toBe("done-1"); // v1.2: finished visible + selectable by default
+		s = handleKey(s, "toggleFinished"); // collapse on demand
 		s = handleKey(s, "selectNext");
-		expect(s.selectedId).toBe("done-1");
+		expect(s.selectedId).toBe("live-1"); // collapsed section skipped
 	});
 
 	test("quit is not a state mutation", () => {
