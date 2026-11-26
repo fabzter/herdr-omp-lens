@@ -232,7 +232,9 @@ describe("P4-2 — orchestration of the P1 adapter", () => {
 		await manager.onWorkerSpawned();
 		const run = m.calls.find((c) => c.method === "runInPane");
 		expect(run?.args[0]).toBe("pane-1");
-		expect(run?.args[1]).toBe(VIEWER_CMD);
+		// v1.4: argv0 ownership wrap — the resolved command rides inside
+		expect(run?.args[1]).toContain(VIEWER_CMD);
+		expect(run?.args[1]).toMatch(/exec -a lens:[^:]+:\d+/);
 		expect(String(run?.args[1]).length).toBeLessThan(256);
 		await manager.stop();
 	});
@@ -480,9 +482,9 @@ describe("final F1 — real resolveViewerCommand() through the launch path", () 
 		const { manager } = make({ adapter: m.adapter, viewerCommand: realViewerCommand });
 		await manager.onWorkerSpawned();
 		const run = m.calls.find((c) => c.method === "runInPane");
-		// the launch path must send the RESOLVED command verbatim — no baked
-		// test prefix masking a broken resolver.
-		expect(run?.args[1]).toBe(realViewerCommand);
+		// the launch path must send the RESOLVED command — no baked test prefix
+		// masking a broken resolver (v1.4 wraps it in an argv0 ownership token).
+		expect(run?.args[1]).toContain(realViewerCommand);
 		await manager.stop();
 
 		// survivor-rebind path: env prefix + the same runnable command word.

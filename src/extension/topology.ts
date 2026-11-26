@@ -26,6 +26,7 @@
 import {
 	createOverviewTab,
 	getPane,
+	paneProcesses,
 	reportMetadata,
 	runInPane,
 	snapshot,
@@ -37,6 +38,7 @@ import type {
 	LifecycleHandlers,
 	PaneInfo,
 	PaneMetadata,
+	PaneProcess,
 	SessionSnapshot,
 	Subscription,
 } from "../herdr/types";
@@ -44,6 +46,69 @@ import type { Message } from "../protocol/types";
 
 export const OVERVIEW_TAB_LABEL = "OMP subagents";
 export const TOPOLOGY_METADATA_SOURCE = "herdr-omp-lens";
+
+/**
+ * Multi-session ownership (owner requirement 2026-11-26): one subagents tab PER
+ * OMP session in a workspace. The FIRST session keeps the plain label (backward
+ * compatible, and the D2 restart-rebind anchor); every additional live session
+ * gets a session-suffixed label so survivors can be matched to their owner.
+ * Herdr 0.9.5 snapshots carry no pane metadata, so the tab LABEL is the only
+ * ownership token that survives a restart.
+ */
+/**
+ * Short ownership suffix from the session id's RANDOM tail. OMP ids are
+ * UUIDv7 — the first 8 hex chars are a timestamp shared by every session
+ * created in the same ~17-minute window, so a head slice COLLIDES between
+ * concurrent sessions (observed: two sessions both `01a214f2`). The tail is
+ * unique per session. Non-hex ids fall back to the last 8 characters.
+ */
+export function sessionSuffix(sessionId: string): string {
+	const hex = sessionId.replace(/-/g, "");
+	return /^[0-9a-f]+$/i.test(hex) ? hex.slice(-8) : sessionId.slice(-8);
+}
+
+export function overviewLabelFor(sessionId: string, plainLabelTaken: boolean): string {
+	return plainLabelTaken
+		? `${OVERVIEW_TAB_LABEL} · ${sessionSuffix(sessionId)}`
+		: OVERVIEW_TAB_LABEL;
+}
+
+/**
+ * Does this tab label belong to `sessionId`? Own suffixed label always; the
+ * plain label is the D2 restart anchor — adoptable ONLY when no other live
+ * session's suffixed tab exists (with a concurrent session present, the plain
+ * tab may still be its live view; hijacking it would steal that session's
+ * screen). The caller passes `otherSessionsPresent` from the snapshot.
+ */
+export function isOwnOverviewLabel(
+	label: string | undefined,
+	sessionId: string,
+	otherSessionsPresent: boolean,
+): boolean {
+	if (label === `${OVERVIEW_TAB_LABEL} · ${sessionSuffix(sessionId)}`) return true;
+	return label === OVERVIEW_TAB_LABEL && !otherSessionsPresent;
+}
+
+/** Is `pid` a live process? (signal 0; EPERM = exists, owned by another user) */
+export function pidAlive(pid: number): boolean {
+	if (!Number.isFinite(pid) || pid <= 0) return false;
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (err) {
+		return (err as NodeJS.ErrnoException).code === "EPERM";
+	}
+}
+
+/**
+ * Ownership token stamped into the viewer's argv0 at launch: `lens:<suffix>:<pid>`.
+ * Herdr's pane.process_info exposes argv0, so a sibling session can read WHO owns
+ * a viewer pane and whether that owner is still alive — the plain tab's owner is
+ * not otherwise recoverable from a snapshot (pane.title is null on 0.9.5).
+ */
+export function viewerOwnershipToken(sessionId: string): string {
+	return `lens:${sessionSuffix(sessionId)}:${process.pid}`;
+}
 
 export type TopologyState = "closed" | "opening" | "open" | "degraded";
 
@@ -63,6 +128,8 @@ export interface TopologyAdapter {
 	): Promise<{ paneId: string }>;
 	runInPane(paneId: string, command: string): Promise<void>;
 	getPane(paneId: string): Promise<PaneInfo | null>;
+	/** Optional: panes without process info are treated as orphaned (D2). */
+	paneProcesses?(paneId: string): Promise<PaneProcess[]>;
 	snapshot(): Promise<SessionSnapshot>;
 	subscribeLifecycle(handlers: LifecycleHandlers): Promise<Subscription>;
 	reportMetadata(paneId: string, meta: PaneMetadata): Promise<void>;
@@ -111,6 +178,8 @@ export interface TopologyManager {
 interface OverviewRef {
 	tabId: string;
 	paneId: string;
+	/** Session-scoped tab label this overview owns (multi-session). */
+	label: string;
 }
 
 function defaultAdapter(ctx: CallerContext): TopologyAdapter {
@@ -119,6 +188,7 @@ function defaultAdapter(ctx: CallerContext): TopologyAdapter {
 		splitPane: (targetPaneId, dir, env) => splitPane(ctx, targetPaneId, dir, env),
 		runInPane: (paneId, command) => runInPane(ctx, paneId, command),
 		getPane: (paneId) => getPane(ctx, paneId),
+		paneProcesses: (paneId) => paneProcesses(ctx, paneId),
 		snapshot: () => snapshot(ctx),
 		subscribeLifecycle: (handlers) => subscribeLifecycle(ctx, handlers),
 		reportMetadata: (paneId, meta) => reportMetadata(ctx, paneId, meta),
@@ -240,6 +310,11 @@ export function createTopologyManager(
 	}
 
 	/** env prefix for the survivor-rebind relaunch (P4-R4: refreshed bridge env). */
+	/** Stamp the ownership token into the viewer's argv0 (multi-session). */
+	function ownedViewerCommand(): string {
+		return `bash -c 'exec -a ${viewerOwnershipToken(sessionId)} ${viewerCommand}'`;
+	}
+
 	function viewerEnvPrefix(): string {
 		return (
 			`LENS_SOCKET_PATH=${shellQuote(bridgeSocketPath)} ` + `LENS_SESSION=${shellQuote(sessionId)}`
@@ -323,15 +398,60 @@ export function createTopologyManager(
 		// panes), so a pane-title match never fires and every reopen spawned a
 		// duplicate "OMP subagents" tab. Exact label only — user tabs may merely
 		// contain the label, and adopting one would hijack a tab we don't own.
-		const survivors = snap.tabs.filter(
+		// Multi-session: one subagents tab PER OMP session. Own suffixed label
+		// always matches; the plain label is the D2 anchor, adoptable only when
+		// no OTHER session's suffixed tab is present (else it may be that
+		// session's live view — never hijack it).
+		const suffixPrefix = `${OVERVIEW_TAB_LABEL} · `;
+		const ownSuffixed = `${suffixPrefix}${sessionSuffix(sessionId)}`;
+		const otherSessionsPresent = snap.tabs.some(
+			(t) =>
+				t.workspaceId === ctx.workspaceId &&
+				t.label?.startsWith(suffixPrefix) === true &&
+				t.label !== ownSuffixed,
+		);
+		const plainTab = snap.tabs.find(
 			(t) => t.workspaceId === ctx.workspaceId && t.label === OVERVIEW_TAB_LABEL,
 		);
+		// The plain anchor belongs to its creator. It is adoptable only when its
+		// viewer's bridge owner is DEAD (restart orphan, D2) — a live owner means
+		// another session is using it right now; never hijack it. Liveness comes
+		// from the viewer's LENS_SOCKET_PATH argv (pane.process_info), whose dir
+		// name embeds the owner pid. Fail-safe: unknown liveness = do not adopt.
+		let plainAdoptable = false;
+		if (plainTab !== undefined && !otherSessionsPresent) {
+			const plainPane = snap.panes.find((p) => p.tabId === plainTab.tabId);
+			if (plainPane !== undefined) {
+				// The viewer's argv0 carries `lens:<suffix>:<pid>` (set at launch).
+				// Own suffix → ours; a live foreign pid → never hijack; dead → D2.
+				const procs = (await adapter.paneProcesses?.(plainPane.paneId)) ?? [];
+				const token = procs.map((p) => p.argv0).find((a) => a.startsWith("lens:"));
+				if (token === undefined) {
+					plainAdoptable = true; // no live viewer — orphaned tab, adopt (D2)
+				} else {
+					const [, suffix, pidStr] = token.split(":");
+					if (suffix === sessionSuffix(sessionId)) {
+						plainAdoptable = true;
+					} else {
+						const pid = Number.parseInt(pidStr ?? "", 10);
+						plainAdoptable = Number.isFinite(pid) && !pidAlive(pid);
+					}
+				}
+			}
+		}
+		const plainTaken = plainTab !== undefined;
+		const ownLabel = overviewLabelFor(sessionId, plainTaken || otherSessionsPresent);
+		const survivors = snap.tabs.filter((t) => {
+			if (t.workspaceId !== ctx.workspaceId) return false;
+			if (t.label === ownSuffixed) return true;
+			return t.label === OVERVIEW_TAB_LABEL && plainAdoptable;
+		});
 		if (survivors.length > 1) {
 			// The pane-title regression already minted duplicates. Rebind the
 			// FIRST — never mint yet another (FR-04/FR-05 one-tab).
 			notice(
 				"warn",
-				`${survivors.length} "${OVERVIEW_TAB_LABEL}" tabs found; rebinding the first, ` +
+				`${survivors.length} "${ownLabel}" tabs found; rebinding the first, ` +
 					"leaving the extras for the user",
 			);
 		}
@@ -339,15 +459,19 @@ export function createTopologyManager(
 		const survivor =
 			survivorTab === undefined ? undefined : snap.panes.find((p) => p.tabId === survivorTab.tabId);
 		if (survivor !== undefined && survivorTab !== undefined) {
-			overview = { tabId: survivorTab.tabId, paneId: survivor.paneId };
+			overview = {
+				tabId: survivorTab.tabId,
+				paneId: survivor.paneId,
+				label: survivorTab.label ?? ownLabel,
+			};
 			// P4-R4/F-11: env is honored only at tab.create — the relaunch must
 			// carry the NEW session's LENS_* inline, else the viewer dials the dead socket.
 			const survivorBaseline = viewerCount?.();
-			await adapter.runInPane(survivor.paneId, `${viewerEnvPrefix()} ${viewerCommand}`);
+			await adapter.runInPane(survivor.paneId, `${viewerEnvPrefix()} ${ownedViewerCommand()}`);
 			await verifyViewerLaunched(survivorBaseline);
 			await adapter.reportMetadata(survivor.paneId, {
 				source: TOPOLOGY_METADATA_SOURCE,
-				title: OVERVIEW_TAB_LABEL,
+				title: ownLabel,
 			});
 			state = "open";
 			degradedNoticeSent = false;
@@ -358,14 +482,14 @@ export function createTopologyManager(
 		// without a root pane in practice) — fall through to create our own.
 
 		state = "opening";
-		const { tabId, rootPaneId } = await adapter.createOverviewTab(OVERVIEW_TAB_LABEL, viewerEnv());
-		overview = { tabId, paneId: rootPaneId };
+		const { tabId, rootPaneId } = await adapter.createOverviewTab(ownLabel, viewerEnv());
+		overview = { tabId, paneId: rootPaneId, label: ownLabel };
 		const rootBaseline = viewerCount?.();
-		await adapter.runInPane(rootPaneId, viewerCommand);
+		await adapter.runInPane(rootPaneId, ownedViewerCommand());
 		await verifyViewerLaunched(rootBaseline);
 		await adapter.reportMetadata(rootPaneId, {
 			source: TOPOLOGY_METADATA_SOURCE,
-			title: OVERVIEW_TAB_LABEL,
+			title: ownLabel,
 		});
 		state = "open";
 		degradedNoticeSent = false;
@@ -434,7 +558,7 @@ export function createTopologyManager(
 	function handlePaneMoved(previousPaneId: string, pane: PaneInfo): void {
 		// V-HDR-3: rewrite stored ids so a later close still matches.
 		if (overview !== null && overview.paneId === previousPaneId) {
-			overview = { tabId: pane.tabId, paneId: pane.paneId };
+			overview = { tabId: pane.tabId, paneId: pane.paneId, label: overview.label };
 			return;
 		}
 		for (const [workerId, splitPaneId] of splits) {
@@ -538,11 +662,11 @@ export function createTopologyManager(
 				);
 				splits.set(workerId, paneId);
 				const splitBaseline = viewerCount?.();
-				await adapter.runInPane(paneId, viewerCommand);
+				await adapter.runInPane(paneId, ownedViewerCommand());
 				await verifyViewerLaunched(splitBaseline);
 				await adapter.reportMetadata(paneId, {
 					source: TOPOLOGY_METADATA_SOURCE,
-					title: `${OVERVIEW_TAB_LABEL} · ${workerId}`,
+					title: `${overview?.label ?? overviewLabelFor(sessionId, true)} · ${workerId}`,
 				});
 				emitTopology("open");
 				return { paneId };

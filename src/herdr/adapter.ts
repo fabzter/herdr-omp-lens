@@ -12,7 +12,7 @@ import { z } from "zod";
 import type { CallerContext } from "./context";
 import { assertAllowedRequest } from "./guards";
 import { HerdrApiError, type HerdrTransport, socketTransport } from "./transport";
-import type { PaneInfo, PaneMetadata, SessionSnapshot, TabInfo } from "./types";
+import type { PaneInfo, PaneMetadata, PaneProcess, SessionSnapshot, TabInfo } from "./types";
 
 /**
  * The single boundary every adapter call routes through: guard first, then
@@ -173,6 +173,47 @@ export async function getPane(
 		throw error;
 	}
 	return parseResult(paneInfoResult, "pane.get", result).pane;
+}
+
+const paneProcessInfoResult = z.object({
+	type: z.literal("pane_process_info"),
+	process_info: z.object({
+		pane_id: z.string(),
+		shell_pid: z.number().optional(),
+		foreground_processes: z
+			.array(z.object({ argv0: z.string(), name: z.string(), pid: z.number() }))
+			.optional(),
+	}),
+});
+
+/**
+ * pane.process_info — the pane's foreground processes (argv0/name/pid).
+ * Read-only; used to recover a viewer pane's ownership token (multi-session).
+ * A gone pane yields an empty list, never a throw.
+ */
+export async function paneProcesses(
+	c: CallerContext,
+	paneId: string,
+	t: HerdrTransport = socketTransport(c.socketPath),
+): Promise<PaneProcess[]> {
+	let result: unknown;
+	try {
+		result = await guardedRequest(t, "pane.process_info", { pane_id: paneId });
+	} catch (error) {
+		if (
+			error instanceof HerdrApiError &&
+			(error.code === "pane_not_found" || error.code === "not_found")
+		) {
+			return [];
+		}
+		throw error;
+	}
+	const info = parseResult(paneProcessInfoResult, "pane.process_info", result).process_info;
+	return (info.foreground_processes ?? []).map((p) => ({
+		argv0: p.argv0,
+		name: p.name,
+		pid: p.pid,
+	}));
 }
 
 /** Authoritative session bootstrap/reconcile read (V-HDR-4). */

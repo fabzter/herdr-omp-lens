@@ -28,8 +28,9 @@ the live Herdr lifecycle steps listed in the report's open items before v1 is de
 
 ## What you get
 
-- **`OMP subagents`** — one tab in `$HERDR_WORKSPACE_ID`, opened with `--no-focus` the first time a
-  direct worker spawns in your OMP session.
+- **`OMP subagents`** — one tab per OMP session in `$HERDR_WORKSPACE_ID`, opened with `--no-focus`
+  the first time a direct worker spawns. Run several OMP sessions in one workspace and each gets its
+  own tab (`OMP subagents · <id>` for the additional ones) — never a shared or hijacked view.
 - **Reopen on the next subtask.** Close the tab and the *next* spawn reopens exactly one — never two,
   even under concurrent spawn events.
 - **Worker split.** `/lens split <workerId>` pops that worker into a no-focus worker-scoped split.

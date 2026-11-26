@@ -64,6 +64,12 @@ OMP interactive session (the agent that owns the workers)
   one tab) and on startup when the history scan is non-empty (`onHistoryPresent`, D2).
 - **Reopen** after a manual close on the *next* spawn — one tab, deduplicated against an
   authoritative `session.snapshot` read so concurrent events can't double-create.
+- **One tab per OMP session (v1.4).** The first session keeps the plain `OMP subagents` label (the
+  D2 restart anchor); additional live sessions get `OMP subagents · <suffix>` (suffix = the session
+  id's random tail — UUIDv7 heads collide). A session rebinds only its OWN tab; the plain anchor is
+  adoptable only when its viewer's owner pid is dead (restart orphan). Ownership is read from the
+  viewer's argv0 token `lens:<suffix>:<pid>` via `pane.process_info` — a live foreign owner is never
+  hijacked.
 - **`/lens`** opens the overview; **`/lens split <workerId>`** opens a no-focus worker-scoped split
   (one per worker; repeats reuse the live pane). Both are read-only and never touch the worker.
 - **Survivor rebind (D2).** After an OMP restart a surviving `OMP subagents` pane is rebound to the

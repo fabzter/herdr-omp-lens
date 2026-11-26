@@ -37,6 +37,8 @@ interface RecordedCall {
 function mockAdapter(opts: { failOn?: string[]; deferSubscribe?: boolean } = {}) {
 	const calls: RecordedCall[] = [];
 	const panes = new Map<string, PaneInfo>();
+	/** argv0 ownership tokens per pane (simulates pane.process_info). */
+	const paneTokens = new Map<string, string>();
 	/** Authoritative tab set (wire `label` — pane.title is null on Herdr 0.9.5). */
 	const tabs = new Map<string, TabInfo>();
 	let handlers: LifecycleHandlers = {};
@@ -83,6 +85,14 @@ function mockAdapter(opts: { failOn?: string[]; deferSubscribe?: boolean } = {})
 		async runInPane(paneId: string, command: string) {
 			calls.push({ method: "runInPane", args: [paneId, command] });
 			maybeFail("runInPane");
+			const tok = /exec -a (lens:[^ ]+)/.exec(command);
+			if (tok !== null) paneTokens.set(paneId, tok[1] as string);
+		},
+		async paneProcesses(paneId: string) {
+			calls.push({ method: "paneProcesses", args: [paneId] });
+			maybeFail("paneProcesses");
+			const tok = paneTokens.get(paneId);
+			return tok === undefined ? [] : [{ argv0: tok, name: "bun", pid: process.pid }];
 		},
 		async getPane(paneId: string) {
 			calls.push({ method: "getPane", args: [paneId] });
@@ -121,6 +131,7 @@ function mockAdapter(opts: { failOn?: string[]; deferSubscribe?: boolean } = {})
 		calls,
 		tabs,
 		panes,
+		paneTokens,
 		get handlers() {
 			return handlers;
 		},
@@ -177,7 +188,9 @@ describe("topology manager — open / single-flight", () => {
 		expect(create?.args[0]).toBe(OVERVIEW_TAB_LABEL);
 		expect(m.count("runInPane")).toBe(1);
 		const run = m.calls.find((c) => c.method === "runInPane");
-		expect(run?.args[1]).toBe(VIEWER_CMD);
+		// v1.4: launch wraps the viewer with an argv0 ownership token
+		expect(run?.args[1]).toContain(VIEWER_CMD);
+		expect(run?.args[1]).toMatch(/exec -a lens:[^:]+:\d+/);
 		expect(manager.state()).toBe("open");
 		const topo = messages.find((msg) => msg.type === "topology");
 		expect(topo).toMatchObject({ type: "topology", state: "open", tabId: "tab-1" });
@@ -357,7 +370,9 @@ describe("topology manager — worker splits (D3)", () => {
 		expect(env.LENS_SOCKET_PATH).toBe(BRIDGE);
 		expect(paneId).toBe("pane-2");
 		const run = m.calls.filter((c) => c.method === "runInPane");
-		expect(run.some((c) => c.args[0] === "pane-2" && c.args[1] === VIEWER_CMD)).toBe(true);
+		expect(
+			run.some((c) => c.args[0] === "pane-2" && (c.args[1] as string).includes(VIEWER_CMD)),
+		).toBe(true);
 		await manager.stop();
 	});
 
@@ -575,5 +590,94 @@ describe("topology manager — review-fix regressions", () => {
 		expect(m.count("createOverviewTab")).toBe(0);
 		expect(m.calls.some((c) => c.method === "runInPane" && c.args[0] === "old-pane")).toBe(true);
 		await manager.stop();
+	});
+});
+
+describe("multi-session ownership — one subagents tab PER OMP session (owner 2026-11-26)", () => {
+	test("second concurrent session creates its OWN suffixed tab, never hijacks the first", async () => {
+		const m = mockAdapter();
+		const a = make({ adapter: m.adapter, sessionId: "01a214f2-aaaa-7000-8000-000000000001" });
+		await a.manager.onWorkerSpawned();
+		const firstCreate = m.calls.find((c) => c.method === "createOverviewTab");
+		expect(firstCreate?.args[0]).toBe(OVERVIEW_TAB_LABEL); // first keeps the plain anchor
+
+		const b = make({ adapter: m.adapter, sessionId: "01a214f2-bbbb-7000-8000-000000000002" });
+		await b.manager.onWorkerSpawned();
+		expect(m.count("createOverviewTab")).toBe(2); // B got its own tab
+		const secondCreate = m.calls.filter((c) => c.method === "createOverviewTab")[1];
+		expect(secondCreate?.args[0]).toBe(`${OVERVIEW_TAB_LABEL} · 00000002`);
+		// B's viewer launched into B's pane, not A's
+		const bState = b.manager.state();
+		expect(bState).toBe("open");
+		const aRuns = m.calls.filter((c) => c.method === "runInPane" && c.args[0] === "pane-1");
+		expect(aRuns.length).toBe(1); // A's pane never relaunched by B
+		await a.manager.stop();
+		await b.manager.stop();
+	});
+
+	test("a session rebinds its OWN suffixed survivor after close, not the plain tab", async () => {
+		const m = mockAdapter();
+		// A owns the plain anchor; B owns a suffixed tab from an earlier life.
+		m.tabs.set("tab-a", {
+			tabId: "tab-a",
+			workspaceId: CTX.workspaceId,
+			label: OVERVIEW_TAB_LABEL,
+		});
+		m.panes.set("pane-a", { paneId: "pane-a", tabId: "tab-a", workspaceId: CTX.workspaceId });
+		m.paneTokens.set("pane-a", `lens:00000001:${process.pid}`); // A alive
+		m.tabs.set("tab-b", {
+			tabId: "tab-b",
+			workspaceId: CTX.workspaceId,
+			label: `${OVERVIEW_TAB_LABEL} · 00000002`,
+		});
+		m.panes.set("pane-b", { paneId: "pane-b", tabId: "tab-b", workspaceId: CTX.workspaceId });
+
+		const b = make({ adapter: m.adapter, sessionId: "01a214f2-bbbb-7000-8000-000000000002" });
+		await b.manager.onWorkerSpawned();
+		expect(m.count("createOverviewTab")).toBe(0); // rebind, never a third tab
+		const run = m.calls.find((c) => c.method === "runInPane");
+		expect(run?.args[0]).toBe("pane-b"); // B's own pane, not A's
+		await b.manager.stop();
+	});
+
+	test("with another live session present, the plain tab is NOT adoptable (no hijack)", async () => {
+		const m = mockAdapter();
+		// A's plain tab + B's suffixed tab both live; a THIRD session C opens.
+		m.tabs.set("tab-a", {
+			tabId: "tab-a",
+			workspaceId: CTX.workspaceId,
+			label: OVERVIEW_TAB_LABEL,
+		});
+		m.panes.set("pane-a", { paneId: "pane-a", tabId: "tab-a", workspaceId: CTX.workspaceId });
+		m.paneTokens.set("pane-a", `lens:00000001:${process.pid}`); // A alive
+		m.tabs.set("tab-b", {
+			tabId: "tab-b",
+			workspaceId: CTX.workspaceId,
+			label: `${OVERVIEW_TAB_LABEL} · 00000002`,
+		});
+		m.panes.set("pane-b", { paneId: "pane-b", tabId: "tab-b", workspaceId: CTX.workspaceId });
+
+		const c = make({ adapter: m.adapter, sessionId: "01a214f2-cccc-7000-8000-000000000003" });
+		await c.manager.onWorkerSpawned();
+		expect(m.count("createOverviewTab")).toBe(1); // C creates its own
+		const create = m.calls.find((x) => x.method === "createOverviewTab");
+		expect(create?.args[0]).toBe(`${OVERVIEW_TAB_LABEL} · 00000003`);
+		await c.manager.stop();
+	});
+
+	test("single-session restart still rebinds the plain anchor (D2 preserved)", async () => {
+		const m = mockAdapter();
+		m.tabs.set("tab-old", {
+			tabId: "tab-old",
+			workspaceId: CTX.workspaceId,
+			label: OVERVIEW_TAB_LABEL,
+		});
+		m.panes.set("pane-old", { paneId: "pane-old", tabId: "tab-old", workspaceId: CTX.workspaceId });
+		const restarted = make({ adapter: m.adapter, sessionId: "brand-new-session" });
+		await restarted.manager.onWorkerSpawned();
+		expect(m.count("createOverviewTab")).toBe(0); // D2: rebind the plain survivor
+		const run = m.calls.find((c) => c.method === "runInPane");
+		expect(run?.args[0]).toBe("pane-old");
+		await restarted.manager.stop();
 	});
 });
